@@ -138,6 +138,11 @@ struct AppState {
     bool motionDetection = true;
     bool forceUpdate     = false;
 
+    // Отключено пользователем (Node-RED / автоматизация). В отличие от 15-секундного
+    // pirCooldownUntil, это «глухой» режим — пока не будет снят вручную кнопкой
+    // (удержание >500 мс) или командой motion_disable/set OFF.
+    bool pirDisabledByUser = false;
+
     unsigned long lastAnimTimer = 0;
 
     int  snakeStartPos = 0, snakeStep = 0, snakeDirection = 1;
@@ -281,26 +286,44 @@ void loop() {
         }
     }
 
-    // Удержание (диммирование)
+    // Удержание. Два сценария:
+    //   1. PIR отключён пользователем (pirDisabledByUser) → реактивируем PIR, dim не запускаем.
+    //   2. Обычный режим → диммирование.
     if (btnState == BTN_PRESSED && (now - btnPressTime > 500)) {
         isHolding = true;
         clickCount = 0;
         resetActivityTimer();
 
-        if (now - lastDimRender > 30) {
-            lastDimRender = now;
-
-            xSemaphoreTake(stateMutex, portMAX_DELAY);
-            state.targetBrightness += dimDirection;
-            if (state.targetBrightness >= 255) { state.targetBrightness = 255; dimDirection = -5; }
-            if (state.targetBrightness <= 5)   { state.targetBrightness = 5;   dimDirection = 5; }
-
-            state.valBrightness = state.targetBrightness;
-            if (state.currentMode != MODE_ON) state.currentMode = MODE_ON;
-
-            setGlobalColor();   // заполняет буферы
-            needsShow = true;   // отрисуем после мьютекса
+        xSemaphoreTake(stateMutex, portMAX_DELAY);
+        if (state.pirDisabledByUser) {
+            // Сценарий 1: снимаем «глухой» PIR-disable и возвращаем нормальную работу.
+            state.pirDisabledByUser = false;
+            state.motionDetection   = true;
+            state.pirCooldownUntil  = 0;
+            state.pirBlackoutUntil  = 0;
+            DBG_PRINTF("[%lu] BUTTON HOLD -> PIR re-enabled by user (pirDisabledByUser cleared)\n",
+                       (unsigned long)now);
+            lastClickTime = now;  // «съедаем» дальнейшие клики в этом удержании
             xSemaphoreGive(stateMutex);
+        } else {
+            xSemaphoreGive(stateMutex);
+
+            // Сценарий 2: обычный dim (с фиксированной частотой ~30 мс).
+            if (now - lastDimRender > 30) {
+                lastDimRender = now;
+
+                xSemaphoreTake(stateMutex, portMAX_DELAY);
+                state.targetBrightness += dimDirection;
+                if (state.targetBrightness >= 255) { state.targetBrightness = 255; dimDirection = -5; }
+                if (state.targetBrightness <= 5)   { state.targetBrightness = 5;   dimDirection = 5; }
+
+                state.valBrightness = state.targetBrightness;
+                if (state.currentMode != MODE_ON) state.currentMode = MODE_ON;
+
+                setGlobalColor();   // заполняет буферы
+                needsShow = true;   // отрисуем после мьютекса
+                xSemaphoreGive(stateMutex);
+            }
         }
     }
 
@@ -471,6 +494,7 @@ void NetworkTaskCode(void * pvParameters) {
     bool wifiWasConnected = false;
     unsigned long lastPeriodicTelemetry = 0;
     bool lastPublishedMotion = true;  // синхронно с AppState.motionDetection = true по умолчанию
+    bool lastPublishedMotionDisable = false;  // синхронно с AppState.pirDisabledByUser = false
 
     for (;;) {
         unsigned long now = millis();
@@ -517,6 +541,16 @@ void NetworkTaskCode(void * pvParameters) {
                 setStatusLED(0, 0, 0);
 
                 needTelemetryUpdate = true;
+
+                // Один раз публикуем sidecar motion_disable/state для информации.
+                // retain = false: состояние НЕ переживает ребут — по умолчанию после
+                // перезагрузки pirDisabledByUser = false, PIR снова активен.
+                xSemaphoreTake(stateMutex, portMAX_DELAY);
+                bool initialPirDisabled = state.pirDisabledByUser;
+                xSemaphoreGive(stateMutex);
+                mqtt.publish(TOPIC_MOTION_DISABLE_STATE,
+                             initialPirDisabled ? "ON" : "OFF", false);
+                lastPublishedMotionDisable = initialPirDisabled;
             } else {
                 vTaskDelay(5000 / portTICK_PERIOD_MS);
             }
@@ -552,6 +586,7 @@ void NetworkTaskCode(void * pvParameters) {
 
                 bool motionNow = state.motionDetection;
                 bool makeupNow = state.isMakeup;
+                bool pirDisabledNow = state.pirDisabledByUser;
                 xSemaphoreGive(stateMutex);
 
                 char buffer[256];
@@ -566,6 +601,15 @@ void NetworkTaskCode(void * pvParameters) {
 
                 // Sidecar: makeup state для switch (retain, всегда актуально)
                 mqtt.publish(TOPIC_MAKEUP_STATE, makeupNow ? "ON" : "OFF", true);
+
+                // Sidecar: pirDisabledByUser для Node-RED. В HA не уходит (discovery
+                // для motion_disable не публикуется). retain=false: после ребута
+                // сторонние системы не получат устаревшее состояние — PIR по умолчанию
+                // активен, чтобы поведение совпадало с фактическим.
+                if (pirDisabledNow != lastPublishedMotionDisable) {
+                    mqtt.publish(TOPIC_MOTION_DISABLE_STATE, pirDisabledNow ? "ON" : "OFF", false);
+                    lastPublishedMotionDisable = pirDisabledNow;
+                }
 
                 vTaskDelay(50 / portTICK_PERIOD_MS);
                 setStatusLED(0, 0, 0);
@@ -649,6 +693,30 @@ static void handleSimpleCommand(const char* sub, byte* payload, unsigned int len
             } else {
                 state.pirCooldownUntil = 0;
             }
+        }
+    }
+    else if (strcmp(sub, "motion_disable") == 0) {
+        // Отдельная команда для Node-RED: «глухой» disable. Не идёт в HA.
+        // ON/true/1 -> pirDisabledByUser=true (PIR не реагирует вообще, до явного
+        //              снятия через motion_disable/set OFF или удержания кнопки).
+        // OFF/false/0 -> снимаем флаг.
+        bool wantDisable =
+            (strcasecmp(buf, "ON") == 0)  || (strcasecmp(buf, "TRUE") == 0) ||
+            (strcasecmp(buf, "1") == 0);
+        bool wantEnable =
+            (strcasecmp(buf, "OFF") == 0) || (strcasecmp(buf, "FALSE") == 0) ||
+            (strcasecmp(buf, "0") == 0);
+        if (wantDisable && !state.pirDisabledByUser) {
+            state.pirDisabledByUser = true;       // «глухой» disable
+            state.motionDetection   = false;      // на всякий случай — PIR не реагирует
+            state.pirCooldownUntil  = 0;          // без авто-возврата в motionDetection=true
+            DBG_PRINTF("[%lu] motion_disable ON (pirDisabledByUser = true)\n",
+                       (unsigned long)millis());
+        } else if (wantEnable && state.pirDisabledByUser) {
+            state.pirDisabledByUser = false;
+            state.motionDetection   = true;
+            DBG_PRINTF("[%lu] motion_disable OFF (pirDisabledByUser cleared)\n",
+                       (unsigned long)millis());
         }
     }
     else if (strcmp(sub, "makeup") == 0) {
