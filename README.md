@@ -74,8 +74,8 @@
 ### Сборка и прошивка
 
 ```bash
-git clone https://github.com/<user>/x15.Mira9-8.Mirror.Light.git
-cd x15.Mira9-8.Mirror.Light/firmware
+git clone git@github.com:alexam3r/x15.Bath.Smart.Led.Mirror.Light.git
+cd x15.Bath.Smart.Led.Mirror.Light/firmware
 pio run -e esp32-s3-zero -t upload
 pio device monitor  # serial-лог (115200 бод)
 ```
