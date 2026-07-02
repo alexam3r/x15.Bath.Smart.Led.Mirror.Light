@@ -1,4 +1,4 @@
-# x15.Mira9-8.Mirror.Light
+# Проект "Умное зеркало" (интеграция HA, Yandex Алиса)
 
 [![MCU: ESP32-S3](https://img.shields.io/badge/MCU-ESP32--S3-blueviolet)](https://www.espressif.com/en/products/socs/esp32-s3)
 [![LEDs: SK6812 RGBW](https://img.shields.io/badge/LEDs-SK6812%20RGBW-ff69b4)](#аппаратная-часть)
@@ -15,14 +15,15 @@
 
 ## Возможности
 
-- **5 режимов работы**: сплошной свет, макияж (белый канал), две змейки (тёмная / радужная), волна с затемнением.
-- **Аппаратная кнопка** (триггер Шмитта SN74LVC2G14): 1 клик — вкл/выкл, 2 клика — макияж, 3 клика — случайный эффект, удержание — плавное диммирование.
-- **PIR с кулдауном** — после ручного выключения автоматика «спит» N секунд, чтобы свет не зажёгся в спину выходящему человеку.
-- **Таймер автовыключения** — если в ванной никого нет, свет гаснет через N минут (настраивается).
-- **Автоэффект** — через каждые M минут простоя запускается случайный эффект.
+- **2 режима работы**: solid (RGB, тёплый оранжевый по умолчанию) и Макияж (белый канал W).
+- **3 эффекта** (запускаются на фоне режима): тёмная змейка, радужная змейка, волна с затемнением.
+- **Аппаратная кнопка** (триггер Шмитта SN74LVC2G14): 1 клик — вкл/выкл, 2 клика — toggle Макияж, 3 клика — случайный эффект, удержание — плавное диммирование.
+- **Сброс настроек при выключении** — цвет возвращается к тёплому (255, 140, 50), яркость к 100%, режим — solid.
+- **PIR с фиксированным кулдауном 30 секунд** — после ручного выключения автоматика «спит», чтобы свет не зажёгся в спину выходящему человеку.
+- **Таймер автовыключения 15 минут** — если в ванной никого нет, свет гаснет. Любое движение сбрасывает таймер в ноль.
+- **Автоэффект через 4-5 минут простоя** (рандом в этом диапазоне после каждого запуска) — только в solid-режиме. В Макияже автоэффекты не запускаются; ручные (3 клик / кнопка HA) работают в обоих режимах.
 - **HA MQTT Discovery** — зеркало само регистрируется в Home Assistant, YAML-конфиг минимальный.
-- **Разделённые MQTT-топики** — для каждой capability (light / motion / makeup / mode / конфиг) свой топик, Алиса рулит ими независимо.
-- **Конфиг в NVS** — параметры эффектов и таймеров меняются через MQTT и сохраняются в энергонезависимой памяти.
+- **Разделённые MQTT-топики** — `set` (JSON Light), `motion/set`, `makeup/set`, `effect/set`.
 - **Yandex Smart Home** — голосовое управление через Алису: «включи зеркало», «поставь режим макияж», «поставь таймер 45 минут», «выключи автоматику».
 
 ---
@@ -74,12 +75,12 @@
 
 ```bash
 git clone https://github.com/<user>/x15.Mira9-8.Mirror.Light.git
-cd x15.Mira9-8.Mirror.Light
+cd x15.Mira9-8.Mirror.Light/firmware
 pio run -e esp32-s3-zero -t upload
 pio device monitor  # serial-лог (115200 бод)
 ```
 
-### Конфигурация — `src/secrets.h`
+### Конфигурация — `firmware/src/secrets.h`
 
 Содержит креды WiFi/MQTT и список топиков. **Не коммитить в публичный репозиторий** (добавить в `.gitignore`). В production рекомендуется provisioning через WiFiManager + NVS, см. комментарии в файле.
 
@@ -106,27 +107,18 @@ const char* HA_DISCOVERY_PREFIX = "homeassistant";
 
 | Топик | Формат payload | Назначение |
 |---|---|---|
-| `light/set` | JSON (`state`, `brightness`, `color`, `effect`, `transition`) | Полное JSON-управление (legacy + HA JSON Light) |
+| `set` | JSON (`state`, `brightness`, `color`) | Полное JSON-управление (HA JSON Light). `color.w > 0` → режим Макияж |
 | `+/set` | wildcard | Подписка на любой из разделённых топиков |
 | `motion/set` | `ON` / `OFF` | Включить/выключить PIR-автоматику |
-| `makeup/set` | `ON` / `OFF` | Включить/выключить режим «макияж» (белый канал) |
-| `mode/set` | `solid` / `makeup` / `dark` / `rainbow` / `wave` | Выбрать режим (для select-entity HA) |
-| `config/auto_off_min/set` | целое 1..240 | Таймер автовыключения, минуты |
-| `config/auto_effect_min/set` | целое 1..240 | Интервал случайного эффекта, минуты |
-| `config/pir_cooldown_sec/set` | целое 0..600 | Кулдаун PIR после ручного OFF, секунды |
-| `config/snake_size/set` | целое 5..255 | Длина змейки |
-| `config/snake_delay_ms/set` | целое 5..255 | Задержка кадра змейки, мс |
-| `config/wave_radius/set` | целое 5..255 | Радиус волны |
-| `config/wave_delay_ms/set` | целое 5..255 | Задержка кадра волны, мс |
-| `config/color_temp_k/set` | целое 2000..8000 | Цветовая температура для makeup (Кельвины) |
+| `makeup/set` | `ON` / `OFF` | Toggle режима Макияж (белый канал) |
+| `effect/set` | `GO` | Запустить случайный эффект (аналог тройного клика кнопки) |
 
-### Пример: JSON-команда «включить на 50 % плавно за 3 секунды»
+### Пример: JSON-команда «включить на 50 %» (белый тёплый)
 
 ```bash
-mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/light/set -m '{
+mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/set -m '{
   "state": "ON",
-  "brightness": 128,
-  "transition": 3
+  "brightness": 128
 }'
 ```
 
@@ -134,11 +126,9 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/light/set -m '{
 
 | Топик | retain | Назначение |
 |---|---|---|
-| `state` | да | Полный JSON-статус: `state`, `brightness`, `brightness_pct`, `color`, `color_temp`, `effect`, `mode`, `transition`, `moveDetection`, `makeup` |
+| `state` | да | JSON-статус: `state`, `brightness`, `brightness_pct`, `color` (rgb/w), `color_mode`, `moveDetection`, `makeup` |
 | `motion/state` | да | `ON`/`OFF` — для `binary_sensor` |
-| `makeup/state` | да | `ON`/`OFF` — для `switch` |
-| `mode/state` | да | Текущий режим — для `select` |
-| `config/<key>/state` | да | Текущее значение NVS-параметра — для `number` |
+| `makeup/state` | да | `ON`/`OFF` — для `switch` (режим Макияж) |
 
 ---
 
@@ -146,17 +136,13 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/light/set -m '{
 
 Зеркало публикует свою discovery-конфигурацию в `homeassistant/light/mirror_bath_flat8/config` при каждом MQTT-подключении. После этого в HA появляется `light.mirror_bath_flat8` автоматически.
 
-`configuration.yaml` добавляет companion-сущности (switch / select / number / scene / template sensor) — см. файл.
-
-### Сценарии HA → Алиса
-
-В YAML определены 4 сцены (`Зеркало Макияж`, `Зеркало Рассвет`, `Зеркало Радуга`, `Зеркало Волна`), которые Алиса понимает как «Алиса, включи сценарий Макияж».
+В `homeassistant/configuration.yaml` дополнительно описаны: switch для автоматики PIR, binary_sensor для датчика движения и кнопка «Эффект». Объекты в УДЯ добавляются через UI / ярлыки.
 
 ---
 
 ## Интеграция с Алисой
 
-Кастомизация capabilities делается **только через UI**:
+Кастомизация capabilities и добавление объектов делается **только через UI** (ярлыки в Yandex Smart Home):
 
 ```
 Settings → Devices & Services → Yandex Smart Home → Configure
@@ -164,25 +150,22 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 
 | HA-сущность | Capability Яндекса |
 |---|---|
-| `light.mirror_bath_flat8` | `on_off`, `brightness` (0..100), `color_setting.rgb`, `scene` |
-| `switch.mirror_motion_switch` | `on_off` |
-| `switch.mirror_makeup_switch` | `on_off` |
-| `select.mirror_mode_select` | `mode` |
-| `number.mirror_auto_off_min` | `range` |
-| `number.mirror_pir_cooldown_sec` | `range` |
+| `light.mirror_bath_flat8` | `on_off`, `brightness` (0..100), `color_setting.rgb` |
+| `switch.mirror_motion_switch` | `on_off` (PIR-автоматика) |
+| `switch.mirror_makeup_switch` | `on_off` (режим Макияж — белый канал) |
+| `button.mirror_effect_button` | (кнопка — сценарий «запустить случайный эффект») |
 
-**Не включать** `color_temp` для RGBW — Яндекс не умеет маппить его на белый канал SK6812. Использовать сцены или прямой `rgbw_color`.
+Таймеры автовыключения (15 мин) и кулдауна PIR (30 сек) — фиксированные, в УДЯ не выносятся. Эффекты запускаются через кнопку «Эффект» — одна кнопка, случайный.
 
 ### Примеры голосовых команд
 
 - «Алиса, включи зеркало»
 - «Алиса, выключи зеркало»
 - «Алиса, яркость зеркала 40 процентов»
-- «Алиса, поставь режим макияж»
+- «Алиса, сделай зеркало жёлтым» / «Алиса, цвет зеркала синий»
+- «Алиса, включи макияж» / «выключи макияж»
 - «Алиса, включи автоматику» / «выключи автоматику»
-- «Алиса, поставь таймер 45 минут»
-- «Алиса, включи сценарий Радуга»
-- «Алиса, сколько до выключения зеркала?»
+- «Алиса, запусти эффект на зеркале»
 
 ---
 
@@ -241,8 +224,8 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 | Действие | Эффект |
 |---|---|
 | 1 короткий клик | Вкл / Выкл (с автовключением PIR и снятием кулдауна) |
-| 2 коротких клика | Toggle режима «макияж» (белый канал) |
-| 3 коротких клика | Случайный эффект |
+| 2 коротких клика | Toggle режима «Макияж» (белый канал W). Если свет выключен — включает сразу в Макияже |
+| 3 коротких клика | Случайный эффект (работает в обоих режимах) |
 | Удержание ≥ 0.5 с | Плавное диммирование (пила 5↔255, шаг 5 каждые 30 мс) |
 
 Антидребезг — аппаратный, через триггер Шмитта SN74LVC2G14 (инвертированная логика, `BTN_PRESSED = HIGH`).
@@ -253,13 +236,26 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 
 ```
 .
-├── platformio.ini          # конфиг сборки (esp32-s3-zero)
-├── configuration.yaml      # Home Assistant: mqtt.light/switch/number/select/scene/template
-├── src/
-│   ├── main.cpp            # прошивка (v26 — Yandex-friendly)
-│   └── secrets.h           # WiFi/MQTT credentials, топики
-└── README.md               # ← вы здесь
+├── README.md                          # ← вы здесь (титульная страница GitHub)
+├── firmware/                          # PlatformIO-проект (корень сборки)
+│   ├── platformio.ini                 # конфиг сборки (esp32-s3-zero)
+│   └── src/
+│       ├── main.cpp                   # прошивка (v26 — Yandex-friendly)
+│       └── secrets.h                  # WiFi/MQTT credentials, топики
+└── homeassistant/                     # конфигурация Home Assistant
+    └── configuration.yaml             # mqtt.light/switch/number/select/scene/template
 ```
+
+Каталог `firmware/` самодостаточен — это корень PlatformIO-проекта. Команды сборки/прошивки выполняются из него:
+
+```bash
+cd firmware
+pio run -e esp32-s3-zero -t upload
+```
+
+Каталог `homeassistant/` содержит YAML-конфиг HA. Файлы `.bak*` (если есть) — резервные копии до правок и в Git не коммитятся.
+
+Дополнительные каталоги проекта (например, `altium/` для схем и PCB) добавляются в корень репозитория независимо.
 
 ---
 
