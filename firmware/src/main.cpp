@@ -35,6 +35,17 @@
 #include "secrets.h"  // WIFI_*, MQTT_*, TOPIC_*, MQTT_BASE, HA_DISCOVERY_PREFIX
 
 // ==========================================
+// 0. DEBUG LOGGING (управляется секретами)
+// ==========================================
+#if DEBUG_LOG_ENABLED
+  #define DBG_PRINTLN(x)  do { Serial.println(x); } while (0)
+  #define DBG_PRINTF(...) do { Serial.printf(__VA_ARGS__); } while (0)
+#else
+  #define DBG_PRINTLN(x)  do {} while (0)
+  #define DBG_PRINTF(...) do {} while (0)
+#endif
+
+// ==========================================
 // 1. PINS & CONSTANTS
 // ==========================================
 
@@ -70,7 +81,9 @@
 #define AUTO_OFF_MS         (15UL * 60UL * 1000UL)   // 15 минут до автовыключения
 #define AUTO_EFFECT_MIN_MS  (4UL  * 60UL * 1000UL)   // 4 минуты (нижняя граница)
 #define AUTO_EFFECT_MAX_MS  (5UL  * 60UL * 1000UL)   // 5 минут (верхняя граница)
-#define PIR_RESUME_DELAY_MS (15UL * 1000UL)          // 15 секунд кулдауна PIR после OFF
+#define PIR_RESUME_DELAY_MS (15UL * 1000UL)          // 15 секунд кулдауна PIR после OFF (HA/кнопка)
+#define PIR_BLACKOUT_MS     (2UL * 1000UL)            // полное игнорирование PIR в первые N мс после любого OFF,
+                                                      // чтобы не было ложных включений на «отлипающих» сенсорах.
 
 #define LOOP_IDLE_DELAY_MS 5
 
@@ -137,6 +150,11 @@ struct AppState {
     // Таймер для отложенной реактивации PIR после ручного выключения.
     // 0 = нет активного кулдауна. После OFF выставляется в millis() + PIR_RESUME_DELAY_MS.
     unsigned long pirCooldownUntil = 0;
+
+    // BLACKOUT: после любого OFF в течение PIR_BLACKOUT_MS PIR полностью игнорируется.
+    // Решает баг «ложное включение во время slide-out / первые секунды после OFF»,
+    // когда PIR дёргает HIGH от собственных подстроек или отражений.
+    unsigned long pirBlackoutUntil = 0;
 };
 
 AppState state;
@@ -155,6 +173,9 @@ int           clickCount    = 0;
 unsigned long lastClickTime = 0;
 int           dimDirection  = 5;
 unsigned long lastDimRender = 0;
+
+// Кэш предыдущего уровня PIR для отлова rising-edge (используется только для логов).
+int           lastPirLevel  = LOW;
 
 // ==========================================
 // 4. PROTOTYPES & HELPERS
@@ -340,13 +361,38 @@ void loop() {
     }
 
     if (state.motionDetection) {
-        if (digitalRead(PIN_PIR) == HIGH) {
-            if (state.currentMode == MODE_OFF || state.currentMode == MODE_ANIM_OFF) {
+        // --- Лог + детект rising-edge на PIR ---
+        int pirRaw = digitalRead(PIN_PIR);
+        if (pirRaw == HIGH && lastPirLevel == LOW) {
+            // rising-edge: реальное движение, а не «висит HIGH»
+            DBG_PRINTF("[%lu] PIR rising-edge (mode=%d, blackout_until=%lu)\n",
+                       (unsigned long)now, (int)state.currentMode,
+                       (unsigned long)state.pirBlackoutUntil);
+        }
+        lastPirLevel = pirRaw;
+
+        if (pirRaw == HIGH) {
+            // BLACKOUT: после любого OFF (включая slide-out) PIR игнорируется
+            // короткое окно. Это лечит ложные включения от «отлипающего» датчика
+            // или отражений.
+            if (state.pirBlackoutUntil > 0 && now < state.pirBlackoutUntil) {
+                DBG_PRINTLN("  -> PIR ignored (blackout)");
+            }
+            // ВАЖНО: реагируем ТОЛЬКО на MODE_OFF. На MODE_ANIM_OFF (идёт slide-out)
+            // НЕ реагируем — иначе анимация выключения прерывается анимацией включения,
+            // и пользователь видит «включение» при горящем свете.
+            else if (state.currentMode == MODE_OFF) {
                 triggerPowerOn();
+                DBG_PRINTLN("  -> PIR triggered POWER ON");
+            }
+            else {
+                DBG_PRINTF("  -> PIR ignored (mode=%d not OFF)\n", (int)state.currentMode);
             }
             resetActivityTimer();  // сброс таймера автовыключения при движении
         }
         if ((state.currentMode == MODE_ON) && (now - lastActivityTime > AUTO_OFF_MS)) {
+            DBG_PRINTF("[%lu] AUTO-OFF (idle %lu ms)\n",
+                       (unsigned long)now, (unsigned long)(now - lastActivityTime));
             triggerPowerOff();
         }
         if (state.currentMode == MODE_ON) {
@@ -356,6 +402,9 @@ void loop() {
             if (!state.isMakeup) {
                 unsigned long nextMs = nextAutoEffectMs;
                 if (now - lastIdleEffectTime > nextMs) {
+                    DBG_PRINTF("[%lu] AUTO-EFFECT (idle %lu ms, next %lu ms)\n",
+                               (unsigned long)now, (unsigned long)(now - lastIdleEffectTime),
+                               (unsigned long)nextMs);
                     startRandomEffect();
                 }
             }
@@ -665,25 +714,32 @@ void triggerPowerOn() {
     state.slideRadius       = 0;
     state.slideMaxRadius    = (TOTAL_LEDS / 2) + SLIDE_EDGE + 2;
     state.lastAnimTimer     = millis();
+    state.pirBlackoutUntil  = 0;   // новое включение снимает blackout
 
     resetActivityTimer();
+    DBG_PRINTF("[%lu] POWER ON -> MODE_ANIM_ON (slideCenter=%d)\n",
+               (unsigned long)millis(), state.slideCenter);
 }
 
 void triggerPowerOff() {
     if (state.currentMode == MODE_OFF) return;
+    MirrorMode prevMode = state.currentMode;
     state.currentMode = MODE_ANIM_OFF;
     if (state.slideRadius < state.slideMaxRadius && state.slideRadius > 0) {
         // Продолжаем с текущего радиуса
     } else {
         state.slideRadius = state.slideMaxRadius;
     }
-    state.lastAnimTimer = millis();
+    state.lastAnimTimer    = millis();
+    state.pirBlackoutUntil = millis() + PIR_BLACKOUT_MS;   // 2 сек blackout после любого OFF
 
     // applyDefaults() НЕ вызываем здесь — иначе при выключении нестандартного цвета
     // сначала резко сменится цвет на дефолт, а потом запустится slide-out.
     // Чтобы смена была незаметной, сброс отложен: см. processAnimation(),
     // где applyDefaults() вызывается ровно в момент перехода MODE_ANIM_OFF → MODE_OFF,
     // когда лента уже физически погасла.
+    DBG_PRINTF("[%lu] POWER OFF (was MODE=%d) -> MODE_ANIM_OFF, blackout until %lu\n",
+               (unsigned long)millis(), (int)prevMode, (unsigned long)state.pirBlackoutUntil);
 }
 
 void startSpecificEffect(int effectId) {
@@ -702,12 +758,18 @@ void startSpecificEffect(int effectId) {
     }
     state.lastAnimTimer = millis();
     lastIdleEffectTime  = millis();
+    DBG_PRINTF("[%lu] START EFFECT id=%d (%s)\n",
+               (unsigned long)millis(), effectId,
+               effectId == 2 ? "WAVE" : (effectId == 1 ? "RAINBOW_SNAKE" : "SNAKE"));
 }
 
 void startRandomEffect() {
-    startSpecificEffect(random(0, 3));
+    int id = random(0, 3);
+    startSpecificEffect(id);
     // Пересчитать случайный интервал до следующего автоэффекта (4-5 минут)
     nextAutoEffectMs = AUTO_EFFECT_MIN_MS + (unsigned long)random(0, (long)(AUTO_EFFECT_MAX_MS - AUTO_EFFECT_MIN_MS));
+    DBG_PRINTF("[%lu] RANDOM EFFECT rolled id=%d, next auto in %lu ms\n",
+               (unsigned long)millis(), id, (unsigned long)nextAutoEffectMs);
 }
 
 // ==========================================
@@ -763,6 +825,7 @@ bool processAnimation() {
         if (finished) {
             if (stepDir > 0) {
                 state.currentMode = MODE_ON;
+                DBG_PRINTF("[%lu] ANIM_ON -> MODE_ON\n", (unsigned long)millis());
                 setGlobalColor();
                 rendered = true;
             } else {
@@ -771,6 +834,7 @@ bool processAnimation() {
                 // на дефолт для следующего включения.
                 applyDefaults();
                 state.currentMode = MODE_OFF;
+                DBG_PRINTF("[%lu] ANIM_OFF -> MODE_OFF (defaults applied)\n", (unsigned long)millis());
                 stripL.clear();
                 stripR.clear();
                 rendered = true;
