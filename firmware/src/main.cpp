@@ -179,8 +179,10 @@ unsigned long lastClickTime = 0;
 int           dimDirection  = 5;
 unsigned long lastDimRender = 0;
 
-// Кэш предыдущего уровня PIR для отлова rising-edge (используется только для логов).
-int           lastPirLevel  = LOW;
+// Кэш предыдущего уровня PIR. Используется для двух вещей:
+//   1. детект rising-edge (HIGH после LOW) — реальное движение;
+//   2. anti-spam лога: пока PIR висит HIGH, логи и сбросы таймера печатаются только один раз.
+int           lastPirLevel     = LOW;
 
 // ==========================================
 // 4. PROTOTYPES & HELPERS
@@ -296,7 +298,8 @@ void loop() {
 
         xSemaphoreTake(stateMutex, portMAX_DELAY);
         if (state.pirDisabledByUser) {
-            // Сценарий 1: снимаем «глухой» PIR-disable и возвращаем нормальную работу.
+            // Удержание: снимаем «глухой» PIR-disable и возвращаем нормальную работу.
+            // Свет при этом НЕ включаем — пользователь хотел только реактивировать PIR.
             state.pirDisabledByUser = false;
             state.motionDetection   = true;
             state.pirCooldownUntil  = 0;
@@ -304,6 +307,7 @@ void loop() {
             DBG_PRINTF("[%lu] BUTTON HOLD -> PIR re-enabled by user (pirDisabledByUser cleared)\n",
                        (unsigned long)now);
             lastClickTime = now;  // «съедаем» дальнейшие клики в этом удержании
+            needTelemetryUpdate = true;
             xSemaphoreGive(stateMutex);
         } else {
             xSemaphoreGive(stateMutex);
@@ -376,42 +380,52 @@ void loop() {
         needsShow = true;
     }
 
-    // Реактивация PIR после истечения кулдауна (ручное выключение кнопкой)
-    if (!state.motionDetection && state.pirCooldownUntil > 0 && now >= state.pirCooldownUntil) {
+    // Реактивация PIR после истечения кулдауна (ручное выключение кнопкой).
+    // НЕ трогает pirDisabledByUser: если пользователь «глухо» отключил PIR,
+    // реактивация по кулдауну не должна включать реакцию на движение.
+    if (!state.motionDetection && !state.pirDisabledByUser &&
+        state.pirCooldownUntil > 0 && now >= state.pirCooldownUntil) {
         state.motionDetection = true;
         state.pirCooldownUntil = 0;
         needTelemetryUpdate = true;
+        DBG_PRINTF("[%lu] PIR cooldown expired -> motionDetection = true\n", (unsigned long)now);
     }
 
-    if (state.motionDetection) {
-        // --- Лог + детект rising-edge на PIR ---
+    // PIR активен только если motionDetection && !pirDisabledByUser.
+    // Проверяются ОБА независимо, потому что pirDisabledByUser — «глухой» флаг,
+    // который должен выживать даже если внешняя автоматизация (motion/set ON)
+    // попытается реактивировать PIR.
+    if (state.motionDetection && !state.pirDisabledByUser) {
         int pirRaw = digitalRead(PIN_PIR);
+
+        // Лог: rising-edge (HIGH после LOW). Дальше пока PIR висит HIGH — тишина,
+        // чтобы Serial не заспамило «ignored» на каждом тике цикла.
         if (pirRaw == HIGH && lastPirLevel == LOW) {
-            // rising-edge: реальное движение, а не «висит HIGH»
-            DBG_PRINTF("[%lu] PIR rising-edge (mode=%d, blackout_until=%lu)\n",
-                       (unsigned long)now, (int)state.currentMode,
-                       (unsigned long)state.pirBlackoutUntil);
+            DBG_PRINTF("[%lu] PIR rising-edge (mode=%d)\n",
+                       (unsigned long)now, (int)state.currentMode);
         }
         lastPirLevel = pirRaw;
 
         if (pirRaw == HIGH) {
             // BLACKOUT: после любого OFF (включая slide-out) PIR игнорируется
-            // короткое окно. Это лечит ложные включения от «отлипающего» датчика
-            // или отражений.
+            // короткое окно (2 сек). Не логируем — норма.
+            bool blocked = false;
             if (state.pirBlackoutUntil > 0 && now < state.pirBlackoutUntil) {
-                DBG_PRINTLN("  -> PIR ignored (blackout)");
+                blocked = true;
             }
-            // ВАЖНО: реагируем ТОЛЬКО на MODE_OFF. На MODE_ANIM_OFF (идёт slide-out)
-            // НЕ реагируем — иначе анимация выключения прерывается анимацией включения,
-            // и пользователь видит «включение» при горящем свете.
+            // Реагируем только на rising-edge в MODE_OFF. На MODE_ANIM_OFF (slide-out)
+            // НЕ реагируем — иначе анимация выключения прерывается анимацией включения.
+            // В повторных тиках, пока PIR висит HIGH (lastPirLevel == HIGH),
+            // решения уже приняты, ничего не делаем и не логируем.
             else if (state.currentMode == MODE_OFF) {
                 triggerPowerOn();
                 DBG_PRINTLN("  -> PIR triggered POWER ON");
             }
-            else {
-                DBG_PRINTF("  -> PIR ignored (mode=%d not OFF)\n", (int)state.currentMode);
+            // Иначе — обычное движение в ванной при горящем свете; сбрасываем
+            // таймер авто-выключения один раз за rising-edge.
+            if (state.currentMode == MODE_ON && !blocked) {
+                resetActivityTimer();
             }
-            resetActivityTimer();  // сброс таймера автовыключения при движении
         }
         if ((state.currentMode == MODE_ON) && (now - lastActivityTime > AUTO_OFF_MS)) {
             DBG_PRINTF("[%lu] AUTO-OFF (idle %lu ms)\n",
@@ -696,26 +710,46 @@ static void handleSimpleCommand(const char* sub, byte* payload, unsigned int len
         }
     }
     else if (strcmp(sub, "motion_disable") == 0) {
-        // Отдельная команда для Node-RED: «глухой» disable. Не идёт в HA.
-        // ON/true/1 -> pirDisabledByUser=true (PIR не реагирует вообще, до явного
-        //              снятия через motion_disable/set OFF или удержания кнопки).
-        // OFF/false/0 -> снимаем флаг.
+        // Команда для Node-RED: «глухое» отключение PIR. Не уходит в HA / Алису.
+        //
+        // Семантика (см. README «Сценарии»):
+        //  motion_disable = ON
+        //    - pirDisabledByUser = true (глухой флаг, до явного снятия)
+        //    - если свет сейчас горит -> гасим (triggerPowerOff)
+        //    - motionDetection = false (на случай если кто-то снаружи его включил)
+        //    - pirCooldownUntil = 0 (без авто-возврата; всё держится на флаге)
+        //  motion_disable = OFF
+        //    - pirDisabledByUser = false
+        //    - motionDetection = true
+        //
+        // Применяется ТАКЖЕ, если сейчас идёт 15-сек pirCooldownUntil: снимаем
+        // его, реактивируем PIR немедленно (пользователь явно сказал «PIR=on»).
         bool wantDisable =
-            (strcasecmp(buf, "ON") == 0)  || (strcasecmp(buf, "TRUE") == 0) ||
+            (strcasecmp(buf, "ON") == 0)   || (strcasecmp(buf, "TRUE") == 0) ||
             (strcasecmp(buf, "1") == 0);
         bool wantEnable =
-            (strcasecmp(buf, "OFF") == 0) || (strcasecmp(buf, "FALSE") == 0) ||
+            (strcasecmp(buf, "OFF") == 0)  || (strcasecmp(buf, "FALSE") == 0) ||
             (strcasecmp(buf, "0") == 0);
-        if (wantDisable && !state.pirDisabledByUser) {
-            state.pirDisabledByUser = true;       // «глухой» disable
-            state.motionDetection   = false;      // на всякий случай — PIR не реагирует
-            state.pirCooldownUntil  = 0;          // без авто-возврата в motionDetection=true
-            DBG_PRINTF("[%lu] motion_disable ON (pirDisabledByUser = true)\n",
-                       (unsigned long)millis());
-        } else if (wantEnable && state.pirDisabledByUser) {
+
+        if (wantDisable) {
+            // Сценарии 1 и 2: «глухо» отключить PIR; если горит — погасить.
+            bool wasOn = !(state.currentMode == MODE_OFF || state.currentMode == MODE_ANIM_OFF);
+            state.pirDisabledByUser = true;
+            state.motionDetection   = false;
+            state.pirCooldownUntil  = 0;
+            if (wasOn) {
+                triggerPowerOff();   // slide-OUT из любого режима
+                DBG_PRINTF("[%lu] motion_disable ON -> state=%d, mirror OFF (was ON)\n",
+                           (unsigned long)millis(), (int)state.currentMode);
+            } else {
+                DBG_PRINTLN("motion_disable ON (mirror already OFF)");
+            }
+        } else if (wantEnable) {
+            // Сценарии 3 и 4: снять глухое отключение; PIR активен сейчас.
             state.pirDisabledByUser = false;
             state.motionDetection   = true;
-            DBG_PRINTF("[%lu] motion_disable OFF (pirDisabledByUser cleared)\n",
+            state.pirCooldownUntil  = 0;  // отменить 15-сек кулдаун, если шёл
+            DBG_PRINTF("[%lu] motion_disable OFF -> pirDisabledByUser cleared, PIR active\n",
                        (unsigned long)millis());
         }
     }
@@ -777,6 +811,16 @@ void resetActivityTimer() {
 }
 
 void triggerPowerOn() {
+    // Любое включение немедленно снимает «глухое» отключение PIR (сценарий 5 —
+    // пользователь сказал свет=ON, значит PIR должен работать).
+    if (state.pirDisabledByUser) {
+        state.pirDisabledByUser = false;
+        DBG_PRINTF("[%lu] triggerPowerOn -> pirDisabledByUser cleared (scenario 5)\n",
+                   (unsigned long)millis());
+    }
+    state.motionDetection   = true;
+    state.pirCooldownUntil  = 0;
+
     state.currentMode       = MODE_ANIM_ON;
     state.slideCenter       = CENTERS[random(0, 4)];
     state.slideRadius       = 0;
