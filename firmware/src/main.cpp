@@ -85,6 +85,13 @@
 #define PIR_BLACKOUT_MS     (2UL * 1000UL)            // полное игнорирование PIR в первые N мс после любого OFF,
                                                       // чтобы не было ложных включений на «отлипающих» сенсорах.
 
+// --- Network watchdog ---
+// Если связь (Wi-Fi ИЛИ MQTT) суммарно не работает более WATCHDOG_TIMEOUT_MS,
+// ESP перезагружается. Проверяем раз в WATCHDOG_CHECK_INTERVAL_MS, чтобы не
+// тратить CPU.
+#define WATCHDOG_TIMEOUT_MS        (5UL * 60UL * 1000UL)   // 5 минут
+#define WATCHDOG_CHECK_INTERVAL_MS (30UL * 1000UL)         // 30 секунд
+
 #define LOOP_IDLE_DELAY_MS 5
 
 // 4 центра для радиальных эффектов
@@ -510,8 +517,50 @@ void NetworkTaskCode(void * pvParameters) {
     bool lastPublishedMotion = true;  // синхронно с AppState.motionDetection = true по умолчанию
     bool lastPublishedMotionDisable = false;  // синхронно с AppState.pirDisabledByUser = false
 
+    // Watchdog: сумарный таймер «времени без связи» для Wi-Fi и MQTT.
+    // Когда оба up — оба сбрасываются в 0. Когда хоть один down — накапливаем
+    // WATCHDOG_CHECK_INTERVAL_MS за каждую проверку. Если хоть один превышает
+    // WATCHDOG_TIMEOUT_MS — ребут. Считаем сумарно, не «непрерывно».
+    unsigned long lastWatchdogCheck = millis();
+    unsigned long wifiDownAccumMs   = 0;
+    unsigned long mqttDownAccumMs   = 0;
+
     for (;;) {
         unsigned long now = millis();
+
+        // 0. Watchdog — проверяем сумарный downtime раз в WATCHDOG_CHECK_INTERVAL_MS.
+        //    Решение о ребуте принимается здесь, до любых continue-веток, чтобы
+        //    даже застрявший цикл в Wi-Fi-реконнекте всё равно увидел watchdog.
+        if (now - lastWatchdogCheck >= WATCHDOG_CHECK_INTERVAL_MS) {
+            bool wifiUp = (WiFi.status() == WL_CONNECTED);
+            bool mqttUp = mqtt.connected();
+            unsigned long elapsed = now - lastWatchdogCheck;
+            lastWatchdogCheck = now;
+
+            if (wifiUp && mqttUp) {
+                // Оба канала работают — сбрасываем накопление.
+                if (wifiDownAccumMs != 0 || mqttDownAccumMs != 0) {
+                    DBG_PRINTF("[%lu] WDG reset (both up; wifi_down=%lu mqtt_down=%lu)\n",
+                               (unsigned long)now, wifiDownAccumMs, mqttDownAccumMs);
+                }
+                wifiDownAccumMs = 0;
+                mqttDownAccumMs = 0;
+            } else {
+                if (!wifiUp) wifiDownAccumMs += elapsed;
+                if (!mqttUp) mqttDownAccumMs += elapsed;
+                DBG_PRINTF("[%lu] WDG tick: wifi_up=%d mqtt_up=%d wifi_down=%lu mqtt_down=%lu\n",
+                           (unsigned long)now, (int)wifiUp, (int)mqttUp,
+                           wifiDownAccumMs, mqttDownAccumMs);
+                if (wifiDownAccumMs > WATCHDOG_TIMEOUT_MS ||
+                    mqttDownAccumMs > WATCHDOG_TIMEOUT_MS) {
+                    DBG_PRINTF("[%lu] WDG TIMEOUT (>%lu ms): wifi_down=%lu mqtt_down=%lu -> ESP.restart()\n",
+                               (unsigned long)now, (unsigned long)WATCHDOG_TIMEOUT_MS,
+                               wifiDownAccumMs, mqttDownAccumMs);
+                    vTaskDelay(100 / portTICK_PERIOD_MS);  // даём Serial флашнуться
+                    ESP.restart();
+                }
+            }
+        }
 
         // 1. WiFi
         if (WiFi.status() != WL_CONNECTED) {

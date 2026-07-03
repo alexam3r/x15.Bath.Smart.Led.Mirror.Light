@@ -27,6 +27,7 @@
 - **Serial-логи** — PIR rising-edge (не спамит на каждом тике цикла), mode transitions, авто-выключение, эффекты. Включаются/выключаются флагом `DEBUG_LOG_ENABLED` в `secrets.h` или через `build_flags` PlatformIO.
 - **HA MQTT Discovery** — зеркало само регистрируется в Home Assistant, YAML-конфиг минимальный.
 - **Разделённые MQTT-топики** — `set` (JSON Light), `motion/set`, `motion_disable/set`, `makeup/set`, `effect/set`.
+- **Network watchdog** — постоянное наблюдение за Wi-Fi + MQTT. Если любой канал суммарно недоступен **более 5 минут**, ESP перезагружается. Локальная работа зеркала (PIR, кнопка, эффекты) при отсутствии сети не страдает — watchdog триггерится только как последнее средство на случай зависания библиотек.
 - **Yandex Smart Home** — голосовое управление через Алису: «включи зеркало», «поставь режим макияж», «поставь таймер 45 минут», «выключи автоматику».
 
 ---
@@ -260,6 +261,7 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 - `scale8()` вместо `float`-математики в горячих циклах эффектов.
 - `JsonDocument` парсится прямо из `payload` без промежуточного `String`.
 - `SnakeSize`/`WaveRadius`/таймауты — `volatile`, не `#define`, меняются на лету.
+- **Network watchdog** в NetworkTask: проверка Wi-Fi + MQTT раз в 30 сек, аккумулирует downtime, `ESP.restart()` если суммарно > 5 мин. Логика простая: `now - lastWatchdogCheck >= 30s` → инкрементируем счётчик; оба up → сброс.
 
 ---
 
@@ -306,7 +308,7 @@ pio run -e esp32-s3-zero -t upload
 
 ## История версий
 
-- **v27** (текущая) — упрощения: PIR-защита (blackout + rising-edge, реакция только на `MODE_OFF`), команда `motion_disable/set` для Node-RED без авто-возврата (снимается командой `OFF` или удержанием кнопки), Serial-логи через `DEBUG_LOG_ENABLED`, `secrets.h.sample` как публичный шаблон.
+- **v27** (текущая) — упрощения: PIR-защита (blackout + rising-edge, реакция только на `MODE_OFF`), команда `motion_disable/set` для Node-RED без авто-возврата (снимается командой `OFF` или удержанием кнопки), Serial-логи через `DEBUG_LOG_ENABLED`, `secrets.h.sample` как публичный шаблон, **network watchdog** (Wi-Fi + MQTT, ребут через 5 мин суммарного downtime), motion_disable-семантика по 5 сценариям, антиспам PIR-лога.
 - **v26** — NVS-конфиг, расширенный JSON, разделённые топики, HA Discovery, support Алисы.
 - **v25** — двухядерная архитектура, `show()` вне мьютекса, `volatile` для shared-флагов, `scale8()`.
 - **v24** — JSON Light, mutex-защита AppState.
