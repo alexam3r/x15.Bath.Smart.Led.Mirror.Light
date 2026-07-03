@@ -20,10 +20,13 @@
 - **Аппаратная кнопка** (триггер Шмитта SN74LVC2G14): 1 клик — вкл/выкл, 2 клика — toggle Макияж, 3 клика — случайный эффект, удержание — плавное диммирование.
 - **Сброс настроек при выключении** — цвет возвращается к тёплому (255, 140, 50), яркость к 100%, режим — solid.
 - **PIR с фиксированным кулдауном 15 секунд** — после ручного выключения автоматика «спит», чтобы свет не зажёгся в спину выходящему человеку.
+- **Blackout-окно 2 секунды после любого OFF** — PIR полностью игнорируется в первые секунды, чтобы ложные импульсы от «отлипающего» датчика или отражений не запустили slide-IN поверх идущего slide-OUT.
+- **«Глухое» отключение PIR через MQTT** — отдельная команда `motion_disable/set` для Node-RED: «на ночь отключить реакцию на PIR». Не уходит в HA discovery, не имеет авто-возврата; снимается командой `OFF` или удержанием кнопки (≥0.5 с).
 - **Таймер автовыключения 15 минут** — если в ванной никого нет, свет гаснет. Любое движение сбрасывает таймер в ноль.
 - **Автоэффект через 4-5 минут простоя** (рандом в этом диапазоне после каждого запуска) — только в solid-режиме. В Макияже автоэффекты не запускаются; ручные (3 клик / кнопка HA) работают в обоих режимах.
+- **Serial-логи** — PIR rising-edge, mode transitions, авто-выключение, эффекты. Включаются/выключаются флагом `DEBUG_LOG_ENABLED` в `secrets.h` или через `build_flags` PlatformIO.
 - **HA MQTT Discovery** — зеркало само регистрируется в Home Assistant, YAML-конфиг минимальный.
-- **Разделённые MQTT-топики** — `set` (JSON Light), `motion/set`, `makeup/set`, `effect/set`.
+- **Разделённые MQTT-топики** — `set` (JSON Light), `motion/set`, `motion_disable/set`, `makeup/set`, `effect/set`.
 - **Yandex Smart Home** — голосовое управление через Алису: «включи зеркало», «поставь режим макияж», «поставь таймер 45 минут», «выключи автоматику».
 
 ---
@@ -82,9 +85,16 @@ pio device monitor  # serial-лог (115200 бод)
 
 ### Конфигурация — `firmware/src/secrets.h`
 
-Содержит креды WiFi/MQTT и список топиков. **Не коммитить в публичный репозиторий** (добавить в `.gitignore`). В production рекомендуется provisioning через WiFiManager + NVS, см. комментарии в файле.
+Содержит креды WiFi/MQTT, список топиков и флаг `DEBUG_LOG_ENABLED`. **Не коммитить в публичный репозиторий** (добавить в `.gitignore`) — для шаблона есть `firmware/src/secrets.h.sample`. В production рекомендуется provisioning через WiFiManager + NVS, см. комментарии в файле.
 
 ```cpp
+// 1 = печатать события PIR / mode changes / effects в Serial,
+// 0 = тишина (production). Можно переопределить через
+// build_flags в platformio.ini:  -DDEBUG_LOG_ENABLED=0
+#ifndef DEBUG_LOG_ENABLED
+  #define DEBUG_LOG_ENABLED 1
+#endif
+
 const char* WIFI_SSID = "...";
 const char* WIFI_PASS = "...";
 
@@ -95,6 +105,16 @@ const char* MQTT_PASS   = "...";
 
 const char* MQTT_BASE = "home/flat8/bath/mirror";
 const char* HA_DISCOVERY_PREFIX = "homeassistant";
+
+// Команды
+const char* TOPIC_MOTION_SET         = "home/flat8/bath/mirror/motion/set";
+const char* TOPIC_MOTION_DISABLE_SET = "home/flat8/bath/mirror/motion_disable/set";
+const char* TOPIC_MAKEUP_SET         = "home/flat8/bath/mirror/makeup/set";
+
+// Sidecar-топики (текущие состояния)
+const char* TOPIC_MOTION_STATE         = "home/flat8/bath/mirror/motion/state";
+const char* TOPIC_MOTION_DISABLE_STATE = "home/flat8/bath/mirror/motion_disable/state"; // retain=false
+const char* TOPIC_MAKEUP_STATE         = "home/flat8/bath/mirror/makeup/state";
 ```
 
 ---
@@ -109,9 +129,20 @@ const char* HA_DISCOVERY_PREFIX = "homeassistant";
 |---|---|---|
 | `set` | JSON (`state`, `brightness`, `color`) | Полное JSON-управление (HA JSON Light). `color.w > 0` → режим Макияж |
 | `+/set` | wildcard | Подписка на любой из разделённых топиков |
-| `motion/set` | `ON` / `OFF` | Включить/выключить PIR-автоматику |
+| `motion/set` | `ON` / `OFF` | Включить/выключить PIR-автоматику (через 15-сек кулдаун при OFF) |
+| `motion_disable/set` | `ON`/`OFF` (или `true`/`false`, `1`/`0`) | «Глухое» отключение PIR. НЕ в HA, предназначено для Node-RED. Снимается командой `OFF` или удержанием кнопки (≥0.5 с) |
 | `makeup/set` | `ON` / `OFF` | Toggle режима Макияж (белый канал) |
 | `effect/set` | `GO` | Запустить случайный эффект (аналог тройного клика кнопки) |
+
+### Пример (Node-RED): отключить PIR на ночь
+
+```bash
+# 23:00 — выключить реакцию на PIR до утра
+mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/motion_disable/set -m 'ON'
+
+# утром — включить обратно либо этой командой, либо удержанием кнопки
+mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/motion_disable/set -m 'OFF'
+```
 
 ### Пример: JSON-команда «включить на 50 %» (белый тёплый)
 
@@ -128,6 +159,7 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/set -m '{
 |---|---|---|
 | `state` | да | JSON-статус: `state`, `brightness`, `brightness_pct`, `color` (rgb/w), `color_mode`, `moveDetection`, `makeup` |
 | `motion/state` | да | `ON`/`OFF` — для `binary_sensor` |
+| `motion_disable/state` | нет | `ON`/`OFF` — текущее значение `pirDisabledByUser`. В HA discovery **не отдаётся**, только для Node-RED. Без retain: после ребута ESP по умолчанию `OFF`. |
 | `makeup/state` | да | `ON`/`OFF` — для `switch` (режим Макияж) |
 
 ---
@@ -137,6 +169,8 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/set -m '{
 Зеркало публикует свою discovery-конфигурацию в `homeassistant/light/mirror_bath_flat8/config` при каждом MQTT-подключении. После этого в HA появляется `light.mirror_bath_flat8` автоматически.
 
 В `homeassistant/configuration.yaml` дополнительно описаны: switch для автоматики PIR, binary_sensor для датчика движения и кнопка «Эффект». Объекты в УДЯ добавляются через UI / ярлыки.
+
+> **Важно:** топик `motion_disable/state` и команда `motion_disable/set` **не выносятся в HA** discovery намеренно. Они нужны только для Node-RED (ночная автоматика), в HA и Алисе переключатель PIR уже есть как `switch.mirror_motion_switch` (через `motion/set`). Реактивация PIR-а из «глухого» disable доступна аппаратной кнопкой на самом устройстве.
 
 ---
 
@@ -226,7 +260,7 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 | 1 короткий клик | Вкл / Выкл (с автовключением PIR и снятием кулдауна) |
 | 2 коротких клика | Toggle режима «Макияж» (белый канал W). Если свет выключен — включает сразу в Макияже |
 | 3 коротких клика | Случайный эффект (работает в обоих режимах) |
-| Удержание ≥ 0.5 с | Плавное диммирование (пила 5↔255, шаг 5 каждые 30 мс) |
+| Удержание ≥ 0.5 с | Если PIR был «глухо» отключён (`motion_disable/set ON`) — реактивирует PIR. В обычном режиме — плавное диммирование (пила 5↔255, шаг 5 каждые 30 мс) |
 
 Антидребезг — аппаратный, через триггер Шмитта SN74LVC2G14 (инвертированная логика, `BTN_PRESSED = HIGH`).
 
@@ -240,8 +274,9 @@ Settings → Devices & Services → Yandex Smart Home → Configure
 ├── firmware/                          # PlatformIO-проект (корень сборки)
 │   ├── platformio.ini                 # конфиг сборки (esp32-s3-zero)
 │   └── src/
-│       ├── main.cpp                   # прошивка (v26 — Yandex-friendly)
-│       └── secrets.h                  # WiFi/MQTT credentials, топики
+│       ├── main.cpp                   # прошивка (v27 — simplified)
+│       ├── secrets.h                  # WiFi/MQTT credentials, топики (в .gitignore)
+│       └── secrets.h.sample           # шаблон secrets.h (коммитится в репо)
 └── homeassistant/                     # конфигурация Home Assistant
     └── configuration.yaml             # mqtt.light/switch/number/select/scene/template
 ```
@@ -261,7 +296,8 @@ pio run -e esp32-s3-zero -t upload
 
 ## История версий
 
-- **v26** (текущая) — NVS-конфиг, расширенный JSON, разделённые топики, HA Discovery, support Алисы.
+- **v27** (текущая) — упрощения: PIR-защита (blackout + rising-edge, реакция только на `MODE_OFF`), команда `motion_disable/set` для Node-RED без авто-возврата (снимается командой `OFF` или удержанием кнопки), Serial-логи через `DEBUG_LOG_ENABLED`, `secrets.h.sample` как публичный шаблон.
+- **v26** — NVS-конфиг, расширенный JSON, разделённые топики, HA Discovery, support Алисы.
 - **v25** — двухядерная архитектура, `show()` вне мьютекса, `volatile` для shared-флагов, `scale8()`.
 - **v24** — JSON Light, mutex-защита AppState.
 
