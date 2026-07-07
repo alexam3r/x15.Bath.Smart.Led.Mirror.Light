@@ -139,7 +139,13 @@ struct AppState {
     // ручные эффекты (тройной клик / button) работают в обоих режимах.
     bool isMakeup = false;
 
-    float valBrightness    = 0.0f;
+    // valBrightness стартует с 255, а не с 0: иначе первый после ребута
+    // triggerPowerOn() пропускает slide-on визуально «невидимым» —
+    // processAnimation() использует globalScale = (uint8_t)valBrightness напрямую
+    // в scale8(), и scale8(x, 0) ≈ 0 даёт чёрный кадр.
+    // После первого выключения applyDefaults() восстанавливает 255,
+    // но без него valBrightness = 0.0f держится до первого applyDefaults().
+    float valBrightness    = 255.0f;
     int   targetBrightness = 255;
 
     bool motionDetection = true;
@@ -954,6 +960,17 @@ bool processAnimation() {
 
         state.lastAnimTimer = now;
         int stepDir = (state.currentMode == MODE_ANIM_ON) ? +1 : -1;
+
+        // Пока идёт slide-out, продлеваем blackout: PIR_BLACKOUT_MS сам по себе
+        // (~2 сек) короче полной длительности анимации (~2.7 сек при slideMaxRadius=95),
+        // и если оставить его только в triggerPowerOff(), он истечёт ДО конца slide-out.
+        // В этот момент лента ещё гаснет, но PIR уже «свободен» — и сразу после
+        // MODE_ANIM_OFF → MODE_OFF датчик (особенно в момент «отлипания») дёрнет
+        // POWER ON обратно. Поэтому каждый шаг slide-out обновляет blackout до
+        // now + PIR_BLACKOUT_MS: окно покрывает всю анимацию + 2 сек запаса после.
+        if (state.currentMode == MODE_ANIM_OFF) {
+            state.pirBlackoutUntil = now + PIR_BLACKOUT_MS;
+        }
 
         stripL.clear();
         stripR.clear();
