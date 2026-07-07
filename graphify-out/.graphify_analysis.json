@@ -1,0 +1,247 @@
+{
+  "communities": {
+    "0": [
+      "firmware_src_main_appstate",
+      "firmware_src_main_appstate_b",
+      "firmware_src_main_appstate_currentmode",
+      "firmware_src_main_appstate_forceupdate",
+      "firmware_src_main_appstate_g",
+      "firmware_src_main_appstate_ismakeup",
+      "firmware_src_main_appstate_israinbowsnake",
+      "firmware_src_main_appstate_lastanimtimer",
+      "firmware_src_main_appstate_motiondetection",
+      "firmware_src_main_appstate_pircooldownuntil",
+      "firmware_src_main_appstate_r",
+      "firmware_src_main_appstate_slidecenter",
+      "firmware_src_main_appstate_slidemaxradius",
+      "firmware_src_main_appstate_slideradius",
+      "firmware_src_main_appstate_snakedirection",
+      "firmware_src_main_appstate_snakestartpos",
+      "firmware_src_main_appstate_snakestep",
+      "firmware_src_main_appstate_targetbrightness",
+      "firmware_src_main_appstate_valbrightness",
+      "firmware_src_main_appstate_wavecenter",
+      "firmware_src_main_appstate_wavestep",
+      "mirrormode"
+    ],
+    "1": [
+      "altium_job1_pcb_led",
+      "readme_home_assistant",
+      "readme_makeup_mode",
+      "readme_mqtt_discovery",
+      "readme_mqtt_interface",
+      "readme_platformio",
+      "readme_reset_on_off",
+      "readme_secrets_h",
+      "readme_sk6812_rgbw",
+      "readme_smart_mirror",
+      "readme_snake_effect",
+      "readme_wave_effect",
+      "readme_ws2812b_status",
+      "readme_yandex_alice"
+    ],
+    "2": [
+      "altium_job1_pcb",
+      "altium_job1_pcb_button",
+      "altium_job1_pcb_pir",
+      "altium_job1_pcb_power",
+      "altium_job1_pcb_resistor_array",
+      "altium_job1_pcb_sn74",
+      "altium_led_mirror_address_project_outputs_for_led_mirror_address_job1",
+      "readme_auto_off_timer",
+      "readme_hardware_button",
+      "readme_pir_cooldown",
+      "readme_pir_sensor",
+      "readme_sn74lvc2g14"
+    ],
+    "3": [
+      "firmware_src_main",
+      "firmware_src_main_applydefaults",
+      "firmware_src_main_getdarkfactor",
+      "firmware_src_main_packcolor",
+      "firmware_src_main_processanimation",
+      "firmware_src_main_scale8",
+      "firmware_src_main_setglobalcolor",
+      "firmware_src_main_setvirtualpixel"
+    ],
+    "4": [
+      "altium_job1_pcb_module",
+      "readme_appstate",
+      "readme_cfg_volatile",
+      "readme_esp32_s3_zero",
+      "readme_mutex_safety",
+      "readme_show_outside_mutex",
+      "readme_two_core_arch"
+    ],
+    "5": [
+      "byte",
+      "firmware_src_main_handlejsoncommand",
+      "firmware_src_main_handlesimplecommand",
+      "firmware_src_main_mqttcallback",
+      "firmware_src_main_triggerpoweroff"
+    ],
+    "6": [
+      "firmware_src_main_loop",
+      "firmware_src_main_resetactivitytimer",
+      "firmware_src_main_showstrips",
+      "firmware_src_main_triggerpoweron"
+    ],
+    "7": [
+      "firmware_src_main_networktaskcode",
+      "firmware_src_main_publishdiscovery",
+      "firmware_src_main_setstatusled",
+      "firmware_src_main_setup"
+    ],
+    "8": [
+      "firmware_src_main_startrandomeffect",
+      "firmware_src_main_startspecificeffect"
+    ]
+  },
+  "cohesion": {
+    "0": 0.09090909090909091,
+    "1": 0.17582417582417584,
+    "2": 0.18181818181818182,
+    "3": 0.5357142857142857,
+    "4": 0.2857142857142857,
+    "5": 0.6,
+    "6": 0.6666666666666666,
+    "7": 0.5,
+    "8": 1.0
+  },
+  "gods": [
+    {
+      "id": "firmware_src_main_appstate",
+      "label": "AppState",
+      "degree": 22
+    },
+    {
+      "id": "readme_smart_mirror",
+      "label": "Smart Mirror Project",
+      "degree": 13
+    },
+    {
+      "id": "firmware_src_main_loop",
+      "label": "loop()",
+      "degree": 9
+    },
+    {
+      "id": "altium_job1_pcb",
+      "label": "PCB Layout Render (Job1)",
+      "degree": 8
+    },
+    {
+      "id": "firmware_src_main_processanimation",
+      "label": "processAnimation()",
+      "degree": 7
+    },
+    {
+      "id": "firmware_src_main_handlejsoncommand",
+      "label": "handleJsonCommand()",
+      "degree": 5
+    },
+    {
+      "id": "firmware_src_main_handlesimplecommand",
+      "label": "handleSimpleCommand()",
+      "degree": 5
+    },
+    {
+      "id": "firmware_src_main_triggerpoweron",
+      "label": "triggerPowerOn()",
+      "degree": 5
+    },
+    {
+      "id": "firmware_src_main_setglobalcolor",
+      "label": "setGlobalColor()",
+      "degree": 5
+    },
+    {
+      "id": "firmware_src_main_networktaskcode",
+      "label": "NetworkTaskCode()",
+      "degree": 4
+    }
+  ],
+  "surprises": [
+    {
+      "source": "ESP32 Module Footprint",
+      "target": "ESP32-S3 Zero MCU",
+      "source_files": [
+        "Altium/Job1.jpg",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "LED102 Connector (PA LED102 0-2)",
+      "target": "SK6812 RGBW LED Strip",
+      "source_files": [
+        "Altium/Job1.jpg",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "PIR Connector (PA PIR 0-3)",
+      "target": "PIR Motion Sensor (HC-SR501 / AM312)",
+      "source_files": [
+        "Altium/Job1.jpg",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "SN74LVC2G14 Footprint (PA SN74LVC2G14 1-6)",
+      "target": "SN74LVC2G14 Schmitt Trigger",
+      "source_files": [
+        "Altium/Job1.jpg",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "Button Connector (PA Button 0-2)",
+      "target": "Hardware Button",
+      "source_files": [
+        "Altium/Job1.jpg",
+        "README.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `AppState` connect `Community 0` to `Community 3`?",
+      "why": "High betweenness centrality (0.237) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `Smart Mirror Project` connect `Community 1` to `Community 2`, `Community 4`?",
+      "why": "High betweenness centrality (0.109) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `PCB Layout Render (Job1)` connect `Community 2` to `Community 1`, `Community 4`?",
+      "why": "High betweenness centrality (0.044) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `currentMode`, `r`, `g` to the rest of the system?",
+      "why": "33 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.09090909090909091 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

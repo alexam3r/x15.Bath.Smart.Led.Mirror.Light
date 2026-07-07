@@ -1,0 +1,1146 @@
+{
+  "nodes": [
+    {
+      "id": "firmware_src_main",
+      "label": "main.cpp",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate",
+      "label": "AppState",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L112",
+      "_origin": "ast"
+    },
+    {
+      "id": "mirrormode",
+      "label": "MirrorMode",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_currentmode",
+      "label": "currentMode",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L113",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_r",
+      "label": "r",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_g",
+      "label": "g",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_b",
+      "label": "b",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_ismakeup",
+      "label": "isMakeup",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L120",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_valbrightness",
+      "label": "valBrightness",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L122",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_targetbrightness",
+      "label": "targetBrightness",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L123",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_motiondetection",
+      "label": "motionDetection",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L125",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_forceupdate",
+      "label": "forceUpdate",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L126",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_lastanimtimer",
+      "label": "lastAnimTimer",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L128",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_snakestartpos",
+      "label": "snakeStartPos",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_snakestep",
+      "label": "snakeStep",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_snakedirection",
+      "label": "snakeDirection",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_israinbowsnake",
+      "label": "isRainbowSnake",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L131",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_wavecenter",
+      "label": "waveCenter",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L133",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_wavestep",
+      "label": "waveStep",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L133",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_slidecenter",
+      "label": "slideCenter",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_slideradius",
+      "label": "slideRadius",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_slidemaxradius",
+      "label": "slideMaxRadius",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_appstate_pircooldownuntil",
+      "label": "pirCooldownUntil",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L139",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_scale8",
+      "label": "scale8()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L181",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_packcolor",
+      "label": "packColor()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L185",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_applydefaults",
+      "label": "applyDefaults()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L191",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_setup",
+      "label": "setup()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L204",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_loop",
+      "label": "loop()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L235",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_setstatusled",
+      "label": "setStatusLED()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L381",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_publishdiscovery",
+      "label": "publishDiscovery()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L388",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_networktaskcode",
+      "label": "NetworkTaskCode()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L412",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_handlejsoncommand",
+      "label": "handleJsonCommand()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L534",
+      "_origin": "ast"
+    },
+    {
+      "id": "byte",
+      "label": "byte",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_handlesimplecommand",
+      "label": "handleSimpleCommand()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L586",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_mqttcallback",
+      "label": "mqttCallback()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L628",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_resetactivitytimer",
+      "label": "resetActivityTimer()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L657",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_triggerpoweron",
+      "label": "triggerPowerOn()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L662",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_triggerpoweroff",
+      "label": "triggerPowerOff()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L672",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_startspecificeffect",
+      "label": "startSpecificEffect()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L689",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_startrandomeffect",
+      "label": "startRandomEffect()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L707",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_processanimation",
+      "label": "processAnimation()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L717",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_setvirtualpixel",
+      "label": "setVirtualPixel()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L900",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_setglobalcolor",
+      "label": "setGlobalColor()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L912",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_showstrips",
+      "label": "showStrips()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L922",
+      "_origin": "ast"
+    },
+    {
+      "id": "firmware_src_main_getdarkfactor",
+      "label": "getDarkFactor()",
+      "file_type": "code",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L927",
+      "_origin": "ast"
+    }
+  ],
+  "edges": [
+    {
+      "source": "firmware_src_main",
+      "target": "arduino",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L29",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "wifi",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L30",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "pubsubclient",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L31",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "arduinojson",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L32",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "adafruit_neopixel",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L33",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "home_projects_x15_mira9_8_mirror_light_firmware_src_secrets_h",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L35",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_appstate",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L112",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "mirrormode",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L113",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_currentmode",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L113",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_r",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_g",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_b",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L115",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_ismakeup",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L120",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_valbrightness",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L122",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_targetbrightness",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L123",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_motiondetection",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L125",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_forceupdate",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L126",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_lastanimtimer",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L128",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_snakestartpos",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_snakestep",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_snakedirection",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_israinbowsnake",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L131",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_wavecenter",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L133",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_wavestep",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L133",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_slidecenter",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_slideradius",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_slidemaxradius",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L135",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main_appstate",
+      "target": "firmware_src_main_appstate_pircooldownuntil",
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L139",
+      "weight": 1.0,
+      "context": "field"
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_scale8",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L181",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_packcolor",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L185",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_applydefaults",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L191",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_setup",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L204",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_loop",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L235",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_setstatusled",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L381",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_publishdiscovery",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L388",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_networktaskcode",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L412",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_handlejsoncommand",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L534",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlejsoncommand",
+      "target": "byte",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L534",
+      "weight": 1.0,
+      "context": "parameter_type"
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_handlesimplecommand",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L586",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlesimplecommand",
+      "target": "byte",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L586",
+      "weight": 1.0,
+      "context": "parameter_type"
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_mqttcallback",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L628",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_mqttcallback",
+      "target": "byte",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L628",
+      "weight": 1.0,
+      "context": "parameter_type"
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_resetactivitytimer",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L657",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_triggerpoweron",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L662",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_triggerpoweroff",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L672",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_startspecificeffect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L689",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_startrandomeffect",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L707",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_processanimation",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L717",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_setvirtualpixel",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L900",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_setglobalcolor",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L912",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_showstrips",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L922",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main",
+      "target": "firmware_src_main_getdarkfactor",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L927",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_setup",
+      "target": "firmware_src_main_setstatusled",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L219",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_setup",
+      "target": "firmware_src_main_resetactivitytimer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L222",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_resetactivitytimer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L247",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_setglobalcolor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L280",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_triggerpoweron",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L293",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_triggerpoweroff",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L297",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_startrandomeffect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L318",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_processanimation",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L366",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_loop",
+      "target": "firmware_src_main_showstrips",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L372",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_networktaskcode",
+      "target": "firmware_src_main_setstatusled",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L435",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_networktaskcode",
+      "target": "firmware_src_main_publishdiscovery",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L464",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_networktaskcode",
+      "target": "firmware_src_main_loop",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L475",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlejsoncommand",
+      "target": "firmware_src_main_triggerpoweron",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L549",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlejsoncommand",
+      "target": "firmware_src_main_triggerpoweroff",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L554",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlesimplecommand",
+      "target": "firmware_src_main_triggerpoweron",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L611",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_handlesimplecommand",
+      "target": "firmware_src_main_startrandomeffect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L621",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_mqttcallback",
+      "target": "firmware_src_main_handlejsoncommand",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L631",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_mqttcallback",
+      "target": "firmware_src_main_handlesimplecommand",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L650",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_triggerpoweron",
+      "target": "firmware_src_main_resetactivitytimer",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L669",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_startrandomeffect",
+      "target": "firmware_src_main_startspecificeffect",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L708",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_processanimation",
+      "target": "firmware_src_main_scale8",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L751",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_processanimation",
+      "target": "firmware_src_main_setvirtualpixel",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L752",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_processanimation",
+      "target": "firmware_src_main_setglobalcolor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L766",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_processanimation",
+      "target": "firmware_src_main_applydefaults",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L772",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_processanimation",
+      "target": "firmware_src_main_getdarkfactor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L871",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_setvirtualpixel",
+      "target": "firmware_src_main_packcolor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L903",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_setglobalcolor",
+      "target": "firmware_src_main_packcolor",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L916",
+      "weight": 1.0
+    },
+    {
+      "source": "firmware_src_main_setglobalcolor",
+      "target": "firmware_src_main_scale8",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "firmware/src/main.cpp",
+      "source_location": "L917",
+      "weight": 1.0
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

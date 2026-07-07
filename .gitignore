@@ -6,3 +6,4 @@ firmware/.vscode/ipch
 firmware/src/secrets.h
 firmware/src/*.bak
 homeassistant/*
+.claude

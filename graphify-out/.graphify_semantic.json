@@ -1,0 +1,809 @@
+{
+  "nodes": [
+    {
+      "id": "readme_smart_mirror",
+      "label": "Smart Mirror Project",
+      "file_type": "document",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_esp32_s3_zero",
+      "label": "ESP32-S3 Zero MCU",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_sk6812_rgbw",
+      "label": "SK6812 RGBW LED Strip",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_ws2812b_status",
+      "label": "WS2812B Status LED",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_pir_sensor",
+      "label": "PIR Motion Sensor (HC-SR501 / AM312)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_sn74lvc2g14",
+      "label": "SN74LVC2G14 Schmitt Trigger",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_hardware_button",
+      "label": "Hardware Button",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_home_assistant",
+      "label": "Home Assistant",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_yandex_alice",
+      "label": "Yandex Alice / Smart Home",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_mqtt_interface",
+      "label": "MQTT Interface (JSON Light)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_mqtt_discovery",
+      "label": "HA MQTT Discovery",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_two_core_arch",
+      "label": "Dual-Core Architecture (FreeRTOS)",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_mutex_safety",
+      "label": "Thread Safety (stateMutex, volatile Cfg)",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_show_outside_mutex",
+      "label": "show() Outside Mutex Optimization",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_pir_cooldown",
+      "label": "PIR 15-Second Cooldown Design",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_auto_off_timer",
+      "label": "15-Minute Auto-Off Timer",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_reset_on_off",
+      "label": "Color/Brightness Reset on Off",
+      "file_type": "rationale",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_snake_effect",
+      "label": "Snake Effect (60 LED fade)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_wave_effect",
+      "label": "Wave Effect (radial dimming)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_makeup_mode",
+      "label": "Makeup Mode (white W channel)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_platformio",
+      "label": "PlatformIO Build System",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_secrets_h",
+      "label": "secrets.h (WiFi/MQTT credentials)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_appstate",
+      "label": "AppState Shared Structure",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_cfg_volatile",
+      "label": "Cfg (volatile configuration)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_led_mirror_address_project_outputs_for_led_mirror_address_job1",
+      "label": "Altium Production Output - Job1",
+      "file_type": "paper",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/led_mirror_address/Project Outputs for led_mirror_address/Job1.PDF",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb",
+      "label": "PCB Layout Render (Job1)",
+      "file_type": "image",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_module",
+      "label": "ESP32 Module Footprint",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_sn74",
+      "label": "SN74LVC2G14 Footprint (PA SN74LVC2G14 1-6)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_pir",
+      "label": "PIR Connector (PA PIR 0-3)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_led",
+      "label": "LED102 Connector (PA LED102 0-2)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_power",
+      "label": "Power Connector (PA Power 0-2)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_button",
+      "label": "Button Connector (PA Button 0-2)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "altium_job1_pcb_resistor_array",
+      "label": "Resistor Arrays (R1-R4, CO R1-R4)",
+      "file_type": "concept",
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_esp32_s3_zero",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_sk6812_rgbw",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_ws2812b_status",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_pir_sensor",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_hardware_button",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_hardware_button",
+      "target": "readme_sn74lvc2g14",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_home_assistant",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_yandex_alice",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_mqtt_interface",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_home_assistant",
+      "target": "readme_mqtt_discovery",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_yandex_alice",
+      "target": "readme_home_assistant",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_two_core_arch",
+      "target": "readme_esp32_s3_zero",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_two_core_arch",
+      "target": "readme_mutex_safety",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_two_core_arch",
+      "target": "readme_show_outside_mutex",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_mutex_safety",
+      "target": "readme_appstate",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_mutex_safety",
+      "target": "readme_cfg_volatile",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_show_outside_mutex",
+      "target": "readme_sk6812_rgbw",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_pir_cooldown",
+      "target": "readme_pir_sensor",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_auto_off_timer",
+      "target": "readme_pir_sensor",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_snake_effect",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_wave_effect",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_makeup_mode",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_makeup_mode",
+      "target": "readme_sk6812_rgbw",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_reset_on_off",
+      "target": "readme_makeup_mode",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_platformio",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_smart_mirror",
+      "target": "readme_secrets_h",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_secrets_h",
+      "target": "readme_mqtt_interface",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_module",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_sn74",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_pir",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_led",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_power",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_button",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_job1_pcb_resistor_array",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb_module",
+      "target": "readme_esp32_s3_zero",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb_sn74",
+      "target": "readme_sn74lvc2g14",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb_pir",
+      "target": "readme_pir_sensor",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb_led",
+      "target": "readme_sk6812_rgbw",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb_button",
+      "target": "readme_hardware_button",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "altium_job1_pcb",
+      "target": "altium_led_mirror_address_project_outputs_for_led_mirror_address_job1",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/Altium/Job1.jpg",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "mirror_hardware_components",
+      "label": "Mirror Hardware Components",
+      "nodes": [
+        "readme_esp32_s3_zero",
+        "readme_sk6812_rgbw",
+        "readme_ws2812b_status",
+        "readme_pir_sensor",
+        "readme_hardware_button",
+        "readme_sn74lvc2g14",
+        "altium_job1_pcb_module",
+        "altium_job1_pcb_sn74",
+        "altium_job1_pcb_pir",
+        "altium_job1_pcb_led",
+        "altium_job1_pcb_button"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md"
+    },
+    {
+      "id": "dual_core_synchronization",
+      "label": "Dual-Core Synchronization Pattern",
+      "nodes": [
+        "readme_two_core_arch",
+        "readme_mutex_safety",
+        "readme_show_outside_mutex",
+        "readme_appstate",
+        "readme_cfg_volatile"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "/home/projects/x15.Mira9-8.Mirror.Light/README.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}
