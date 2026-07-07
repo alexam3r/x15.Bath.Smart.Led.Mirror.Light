@@ -7,3 +7,4 @@ firmware/src/secrets.h
 firmware/src/*.bak
 homeassistant/*
 .claude
+graphify-out
