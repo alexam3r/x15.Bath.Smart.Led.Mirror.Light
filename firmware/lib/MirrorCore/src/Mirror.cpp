@@ -192,7 +192,8 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
         case ButtonEventType::HoldStart:
             if (gate_.nightMode()) {
                 gate_.setNightMode(false);
-                holdLocked_ = true;  // bug A fix: this hold must not power on or dim
+                gate_.onManualOff(now);  // Ruling R14: 15 s PIR quiet — PIR must not relight it either
+                holdLocked_ = true;      // bug A fix: this hold must not power on or dim
             } else if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
                 powerOn(now);
             }

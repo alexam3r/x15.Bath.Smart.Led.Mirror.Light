@@ -358,17 +358,68 @@ static void test_hold_from_off_slides_then_dims(void) {
     TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS - cfg::DIM_STEP, m.frame()[0].r);
 }
 
-// Bug A regression: hold started while in night mode must ONLY clear night
-// mode (and lock dimming for the rest of the hold) — it must never power on
-// and never dim. Night mode is cleared the instant HoldStart fires, so if
-// the user is already standing in front of the mirror, PIR can power it on
-// *during the same hold* (still holding, no HoldEnd yet) — holdLocked_ must
-// keep blocking dimming even once power_ reaches On. A version of this test
-// that never leaves OFF during the hold cannot tell the fix apart from a
-// missing `holdLocked_ = true;`: the `power_ == On` half of HoldTick's guard
-// already blocks dimming on its own while OFF/SLIDE_ON, so the lock is only
-// load-bearing once ON is reached mid-hold.
+// Bug A regression + Ruling R14: a hold started while in night mode must
+// ONLY clear night mode — the light must not come on, neither from the hold
+// itself nor from the PIR. Clearing night mode this way starts the same 15 s
+// PIR cooldown as a manual OFF, so a user already standing in front of the
+// mirror does not relight it in the very same loop iteration (main.cpp
+// calls onPir() right after onButton()), nor while still holding, nor right
+// after releasing. Once the cooldown has run out, the PIR works again.
 static void test_hold_in_night_mode_only_clears_night_mode(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(nightModeCmd(true), now);
+    TEST_ASSERT_TRUE(m.snapshot().nightMode);
+
+    now += 100;
+    const uint32_t holdStartAt = now;
+    m.onButton(holdStart(), now);
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+
+    // Same loop iteration: PIR already HIGH (the user is standing there).
+    m.onPir(true, now);
+    m.tick(now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(),
+                              "PIR relit the mirror in the same iteration as a night-mode HoldStart");
+
+    // Keep holding for 2 s with the PIR HIGH the whole time.
+    for (int i = 0; i < 2000 / 30; ++i) {
+        now += 30;
+        m.onButton(holdTick(), now);
+        m.onPir(true, now);
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(),
+                                  "PIR relit the mirror during a night-mode hold");
+    }
+    m.onButton(holdEnd(), now);
+
+    // Released: the PIR stays ignored until 15 s after HoldStart.
+    while (now < holdStartAt + cfg::PIR_COOLDOWN_MS - 50) {
+        now += 5;
+        m.onPir(true, now);
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(),
+                                  "PIR relit the mirror within 15 s of a night-mode hold");
+    }
+
+    // Cooldown over: the PIR auto-on works again.
+    now = holdStartAt + cfg::PIR_COOLDOWN_MS + 50;
+    m.tick(now);
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+}
+
+// Bug A lock: a hold started in night mode must not dim for the rest of
+// that hold, even if the mirror reaches ON before it is released. The PIR
+// can no longer do that (see above), so ON is driven here by an explicit
+// Light state:1 command mid-hold. A version of this test that never leaves
+// OFF during the hold cannot tell the lock apart from a missing
+// `holdLocked_ = true;`: the `power_ == On` half of HoldTick's guard already
+// blocks dimming on its own while OFF/SLIDE_ON, so the lock is only
+// load-bearing once ON is reached mid-hold.
+static void test_night_mode_hold_never_dims(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
@@ -377,10 +428,9 @@ static void test_hold_in_night_mode_only_clears_night_mode(void) {
     m.onButton(holdStart(), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
 
-    // Night mode is now clear; PIR can auto-on while the hold is still in
-    // progress (no HoldEnd yet).
+    // Still holding (no HoldEnd yet): HA/Alice turns the light on.
     now += 10;
-    m.onPir(true, now);
+    m.apply(lightState(1), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
 
     // Keep holding through the slide-in. These HoldTicks are separately
@@ -1071,6 +1121,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_effect_finishes_returns_to_static);
     RUN_TEST(test_hold_from_off_slides_then_dims);
     RUN_TEST(test_hold_in_night_mode_only_clears_night_mode);
+    RUN_TEST(test_night_mode_hold_never_dims);
     RUN_TEST(test_dim_bounces_5_255);
     RUN_TEST(test_click_ge4_ignored);
 

@@ -19,8 +19,8 @@ public:
     void setNightMode(bool on);
     bool nightMode() const { return nightMode_; }
 
-    // powerOff(manual=true): start the 15s "don't turn the light back on
-    // behind the departing user" cooldown.
+    // powerOff(manual=true), or a hold that clears night mode: start the
+    // 15s "don't turn the light back on behind the departing user" cooldown.
     void onManualOff(uint32_t now);
 
     // Entered OFF after a slide-out: start the 2s blackout guarding

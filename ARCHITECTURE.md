@@ -195,7 +195,7 @@ stateDiagram-v2
 | 2 клика | `Click(2)` | `OFF`/`SLIDE_OFF` → `base = Makeup`, `powerOn()`; иначе переключить `Solid ↔ Makeup` |
 | 3 клика | `Click(3)` | `startEffect(random)` (в `OFF` игнорируется) |
 | ≥ 4 клика | `Click(n)` | игнор |
-| удержание ≥ 500 мс | `HoldStart` | если `nightMode` → снять `nightMode`, **заблокировать диммирование до конца удержания**; иначе если `OFF`/`SLIDE_OFF` → `powerOn()` |
+| удержание ≥ 500 мс | `HoldStart` | если `nightMode` → снять `nightMode`, запустить `cooldown` 15 с (PIR не зажжёт свет ни во время удержания, ни сразу после — Ruling R14), **заблокировать диммирование до конца удержания**; свет не включается; иначе если `OFF`/`SLIDE_OFF` → `powerOn()` |
 | удержание, каждые 30 мс | `HoldTick` | если не заблокировано и `power == ON` → отменить эффект, `brightness ± 5` с отскоком в границах 5..255 |
 | отпускание после удержания | `HoldEnd` | снять блокировку; **клик не засчитывается** (правило №5) |
 
@@ -208,7 +208,7 @@ stateDiagram-v2
 |---|---|---|
 | `automation` (по умолчанию `true`) | `motion/set` | Главный выключатель автоматики. `false` → нет автовключения, автовыключения и автоэффектов. **Постоянный** до явного `motion/set ON`. |
 | `nightMode` (по умолчанию `false`) | `motion_disable/set`, удержание кнопки, любое `powerOn()` | «Глухое» отключение PIR (Node-RED, ночь). При включении — если свет горит, гасится. |
-| `cooldown` 15 с | `powerOff(manual=true)` | PIR игнорируется после ручного выключения («не включать свет в спину уходящему»). Внутренний, в HA не виден. |
+| `cooldown` 15 с | `powerOff(manual=true)`, снятие `nightMode` удержанием кнопки | PIR игнорируется после ручного выключения («не включать свет в спину уходящему») и после снятия ночного режима удержанием (Ruling R14). Внутренний, в HA не виден. |
 | `blackout` 2 с | вход в `OFF` после slide-out | Защита от ложного срабатывания «отлипающего» датчика сразу после гашения. |
 
 Правила:
@@ -632,7 +632,7 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);   // 0 п�
 
 | Баг | Суть | Исправление |
 |---|---|---|
-| A | Удержание для снятия `pirDisabledByUser` через 5 мс уходило в диммирование и мгновенно включало свет | блокировка диммирования до `HoldEnd` (`test_mirror: hold_in_night_mode_only_clears_night_mode`) |
+| A | Удержание для снятия `pirDisabledByUser` через 5 мс уходило в диммирование и мгновенно включало свет | блокировка диммирования до `HoldEnd` + `cooldown` PIR 15 с с момента `HoldStart`, чтобы свет не зажёг и PIR (`test_mirror: hold_in_night_mode_only_clears_night_mode`, `night_mode_hold_never_dims`) |
 | B | Discovery-пакет ≈ 442 Б > буфера PubSubClient 256 Б — `publish()` молча не работал | Discovery удалён, `setBufferSize(512)` |
 | C | `motion/state` после ребута не переопубликовывался (`lastPublishedMotion = true`), retained-значение устаревало | все state-топики публикуются при каждом подключении |
 | D | Абсолютные дедлайны `millis() + X` ломаются при переполнении через 49,7 сут | `Countdown` на разности (`test_motion: cooldown_survives_millis_wraparound`) |
