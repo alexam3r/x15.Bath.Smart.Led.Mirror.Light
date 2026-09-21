@@ -143,7 +143,7 @@ constexpr char     MQTT_BASE[]   = "home/flat8/bath/mirror";   // no trailing sl
 | `set` | JSON: `state`, `brightness`, `color`, `effect` | Полное управление (HA JSON Light). `effect` принимает `solid, makeup, random, dark, rainbow, wave` |
 | `+/set` | wildcard | Подписка на любой из разделённых топиков |
 | `motion/set` | switch-payload (`ON`/`OFF`/`1`/`0`/`TRUE`/`FALSE`, регистр не важен) | Включить/выключить PIR-автоматику. Состояние **постоянное** — держится до следующей команды |
-| `motion_disable/set` | switch-payload | «Глухое» отключение PIR. НЕ в HA, для Node-RED. Снимается `OFF` или удержанием кнопки (≥0.5 с) |
+| `motion_disable/set` | switch-payload | «Глухое» отключение PIR. НЕ в HA, для Node-RED. Снимается `OFF` или удержанием кнопки (≥0.5 с). Повторный `OFF`, когда ночной режим уже снят, ничего не меняет и не отменяет 15-секундную паузу PIR |
 | `makeup/set` | switch-payload | Toggle режима Макияж (белый канал). Если свет был выключен — включает его |
 | `effect/set` | любой | Запустить случайный эффект (аналог тройного клика кнопки) |
 

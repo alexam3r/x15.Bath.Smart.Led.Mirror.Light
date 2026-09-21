@@ -143,6 +143,32 @@ static void test_night_mode_blocks_until_cleared(void) {
     TEST_ASSERT_TRUE(gate.canAutoOn(t0 + oneHourMs));  // allowed right after
 }
 
+// Ruling R18: switching night mode OFF cancels the PIR cooldown only when it
+// actually clears night mode. A redundant OFF (night mode already off, e.g. a
+// Node-RED flow re-sending motion_disable/set OFF) must not reopen the PIR
+// during a cooldown started by a manual off or a night-mode button hold.
+static void test_night_mode_off_when_already_off_keeps_cooldown(void) {
+    MotionGate gate;
+    const uint32_t t0 = 3000;
+
+    gate.onManualOff(t0);
+    gate.setNightMode(false);  // night mode was already off
+    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + 100));
+    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + cfg::PIR_COOLDOWN_MS - 1));
+    TEST_ASSERT_TRUE(gate.canAutoOn(t0 + cfg::PIR_COOLDOWN_MS));
+}
+
+// The real OFF (night mode was on) still means "PIR active now" (§4.5).
+static void test_night_mode_off_clears_cooldown_when_night_was_on(void) {
+    MotionGate gate;
+    const uint32_t t0 = 3000;
+
+    gate.setNightMode(true);
+    gate.onManualOff(t0);  // motion_disable ON switched a lit mirror off
+    gate.setNightMode(false);
+    TEST_ASSERT_TRUE(gate.canAutoOn(t0 + 100));
+}
+
 static void test_power_on_clears_night_mode_and_cooldown(void) {
     MotionGate gate;
     const uint32_t t0 = 1000;
@@ -223,6 +249,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_blackout_blocks_for_2s);
     RUN_TEST(test_automation_off_blocks_until_on);
     RUN_TEST(test_night_mode_blocks_until_cleared);
+    RUN_TEST(test_night_mode_off_when_already_off_keeps_cooldown);
+    RUN_TEST(test_night_mode_off_clears_cooldown_when_night_was_on);
     RUN_TEST(test_power_on_clears_night_mode_and_cooldown);
     RUN_TEST(test_automation_on_clears_cooldown);
     RUN_TEST(test_cooldown_survives_millis_wraparound);

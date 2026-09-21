@@ -245,7 +245,7 @@ stateDiagram-v2
 | `makeup/set OFF` | `base = Solid` |
 | `effect/set <любое>` | `startEffect(random)` |
 | `motion_disable/set ON` | `nightMode = true`; если `SLIDE_ON`/`ON` → `powerOff(manual)` |
-| `motion_disable/set OFF` | `nightMode = false`, сбросить `cooldown` |
+| `motion_disable/set OFF` | `nightMode = false`; `cooldown` сбрасывается, **только если ночной режим был включён** (Ruling R18): повторный OFF не отменяет 15-секундную паузу PIR, например после удержания кнопки |
 
 ---
 

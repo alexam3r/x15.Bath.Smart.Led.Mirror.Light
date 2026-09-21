@@ -11,10 +11,13 @@ void MotionGate::setAutomation(bool on) {
 }
 
 void MotionGate::setNightMode(bool on) {
-    nightMode_ = on;
-    if (!on) {
+    // Ruling R18: only a real night mode -> off transition means "PIR active
+    // now". A redundant OFF must not cancel a running cooldown (e.g. the one a
+    // night-mode button hold starts).
+    if (!on && nightMode_) {
         cooldown_.cancel();
     }
+    nightMode_ = on;
 }
 
 void MotionGate::onManualOff(uint32_t now) { cooldown_.start(now, cfg::PIR_COOLDOWN_MS); }
