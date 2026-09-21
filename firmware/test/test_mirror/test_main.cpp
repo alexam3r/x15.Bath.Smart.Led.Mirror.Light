@@ -130,6 +130,36 @@ static void test_power_on_during_slide_off_reverses(void) {
     TEST_ASSERT_TRUE(PowerState::On == m.power());
 }
 
+// Ruling R17: switching off within ~30 ms of switching on (before the
+// slide-on rendered its first step, radius 0) must not flash the ring:
+// the slide-out continues from radius 0 — dark — and reaches OFF within a
+// step or two, instead of lighting all 168 pixels and playing a full
+// ~2.7 s slide-out from the maximum radius.
+static void test_power_off_before_first_slide_step_stays_dark(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+
+    m.onButton(click(1), now);  // -> SlideOn, radius 0
+    m.onButton(click(1), now);  // -> SlideOff before any slide step
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+
+    uint16_t maxLit = 0;
+    uint32_t offAt = 0;
+    const uint32_t end = now + 500;
+    while (now < end) {
+        now += 5;
+        m.tick(now);
+        const uint16_t lit = litPixelCount(m.frame());
+        if (lit > maxLit) maxLit = lit;
+        if (offAt == 0 && m.power() == PowerState::Off) offAt = now;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(maxLit <= 3, "power-off right after power-on lit up the ring");
+    TEST_ASSERT_TRUE_MESSAGE(offAt != 0, "never reached OFF");
+    TEST_ASSERT_TRUE_MESSAGE(offAt <= 2 * cfg::SLIDE_STEP_MS + 5,
+                              "slide-out from radius 0 took more than a couple of steps");
+}
+
 // --- Slice 2: button, PIR, commands ----------------------------------------
 
 static const Rgbw kSolidDefault{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
@@ -1178,6 +1208,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_slide_on_completes_to_on);
     RUN_TEST(test_click1_from_on_slides_off_to_off);
     RUN_TEST(test_power_on_during_slide_off_reverses);
+    RUN_TEST(test_power_off_before_first_slide_step_stays_dark);
 
     RUN_TEST(test_click2_from_off_makeup_and_powers_on);
     RUN_TEST(test_click2_toggles_base_when_on);

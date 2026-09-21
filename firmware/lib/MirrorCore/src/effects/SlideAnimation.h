@@ -15,8 +15,10 @@ public:
     // center_ = center, radius_ = 0, turningOn_ = true.
     void startOn(uint16_t center);
 
-    // turningOn_ = false; if radius_ isn't strictly inside (0, SLIDE_MAX_RADIUS)
-    // (i.e. not mid slide-on), radius_ = SLIDE_MAX_RADIUS (v27 triggerPowerOff).
+    // turningOn_ = false; radius_ = SLIDE_MAX_RADIUS if it is outside
+    // [0, SLIDE_MAX_RADIUS) (slide-on finished, or a slide-out already
+    // ended), otherwise kept — including 0, so switching off before the
+    // first slide-on step stays dark (Ruling R17; v27 jumped to max at 0).
     void startOff();
 
     // turningOn_ = true, radius_ kept (reversible mid slide-out).

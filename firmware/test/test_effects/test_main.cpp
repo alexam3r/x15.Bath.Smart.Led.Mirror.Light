@@ -48,11 +48,18 @@ static void test_slide_on_takes_95_steps(void) {
     TEST_ASSERT_EQUAL_INT(95, calls);
 }
 
+// Runs a slide-on to completion (radius_ == SLIDE_MAX_RADIUS), i.e. the
+// state SlideAnimation is in whenever Mirror is ON.
+static void completeSlideOn(SlideAnimation& slide, Frame& f, uint16_t center) {
+    slide.startOn(center);
+    while (slide.step(f, kSolid)) {}
+}
+
 static void test_slide_off_takes_96_steps(void) {
     SlideAnimation slide;
     Frame f;
-    slide.startOn(9);
-    slide.startOff();  // fresh (radius_ == 0, not in (0, SLIDE_MAX_RADIUS)) -> radius_ = SLIDE_MAX_RADIUS
+    completeSlideOn(slide, f, 9);
+    slide.startOff();  // from ON (radius_ == SLIDE_MAX_RADIUS) -> starts at SLIDE_MAX_RADIUS
     TEST_ASSERT_EQUAL_INT16(95, slide.radius());
 
     int calls = 0;
@@ -91,6 +98,31 @@ static void test_slide_reverse_keeps_radius(void) {
     slide.reverseToOn();
     TEST_ASSERT_TRUE(slide.turningOn());
     TEST_ASSERT_EQUAL_INT16(1, slide.radius());
+}
+
+// Ruling R17: powering off before the slide-on rendered its first step
+// (radius_ still 0) keeps radius 0 instead of jumping to SLIDE_MAX_RADIUS —
+// otherwise the whole ring would light up and play a full ~2.7 s slide-out.
+// The one remaining step renders radius 0 (dark everywhere) and finishes.
+static void test_slide_off_from_radius_0_stays_dark(void) {
+    SlideAnimation slide;
+    Frame f;
+    slide.startOn(9);
+    slide.startOff();
+    TEST_ASSERT_EQUAL_INT16(0, slide.radius());
+    TEST_ASSERT_FALSE(slide.turningOn());
+
+    bool more = slide.step(f, kSolid);
+    TEST_ASSERT_FALSE_MESSAGE(more, "slide-off from radius 0 did not finish after one step");
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        TEST_ASSERT_TRUE(kBlack == f[i]);
+    }
+
+    // Already past the end (radius_ < 0 after a finished slide-out):
+    // startOff() restarts from SLIDE_MAX_RADIUS, as before.
+    TEST_ASSERT_TRUE(slide.radius() < 0);
+    slide.startOff();
+    TEST_ASSERT_EQUAL_INT16(95, slide.radius());
 }
 
 // Golden frames vs v27 processAnimation() MODE_ANIM_ON/MODE_ANIM_OFF branch
@@ -143,7 +175,7 @@ static void test_slide_golden_frames(void) {
     // 95): max ringDist (84) <= radius-EDGE (86), whole ring lit too.
     SlideAnimation slideOff;
     Frame fOff;
-    slideOff.startOn(9);
+    completeSlideOn(slideOff, fOff, 9);
     slideOff.startOff();
     TEST_ASSERT_EQUAL_INT16(95, slideOff.radius());
     slideOff.step(fOff, kSolid);
@@ -429,6 +461,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_slide_on_takes_95_steps);
     RUN_TEST(test_slide_off_takes_96_steps);
     RUN_TEST(test_slide_reverse_keeps_radius);
+    RUN_TEST(test_slide_off_from_radius_0_stays_dark);
     RUN_TEST(test_slide_golden_frames);
     RUN_TEST(test_snake_finishes_after_229_steps);
     RUN_TEST(test_dark_snake_head_is_black_at_full_alpha);

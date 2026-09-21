@@ -14,7 +14,11 @@ void SlideAnimation::startOn(uint16_t center) {
 
 void SlideAnimation::startOff() {
     turningOn_ = false;
-    if (!(radius_ > 0 && radius_ < static_cast<int16_t>(cfg::SLIDE_MAX_RADIUS))) {
+    // Ruling R17: only a finished slide-on (ON) or an already finished
+    // slide-out restarts from the maximum radius. Radius 0 (slide-on has not
+    // rendered a step yet) stays 0, so the slide-out stays dark and ends at
+    // once — v27 jumped to the maximum here, flashing the whole ring.
+    if (radius_ >= static_cast<int16_t>(cfg::SLIDE_MAX_RADIUS) || radius_ < 0) {
         radius_ = static_cast<int16_t>(cfg::SLIDE_MAX_RADIUS);
     }
 }
