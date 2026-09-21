@@ -1,7 +1,7 @@
-// Task 5: Mirror implementation. Grown test-first in slices — see
+// Task 5: Mirror — the single-owner state machine (ARCHITECTURE.md section 4
+// state machine, 8.1 interface). Grown test-first in slices — see
 // firmware/test/test_mirror/test_main.cpp and task-5-report.md for the
-// TDD history. This file starts as a stub (slice 0) and each slice below
-// fills in one more piece of tick()/onButton()/onPir()/apply().
+// TDD history (RED/GREEN evidence per slice).
 #include "Mirror.h"
 
 #include "Log.h"
