@@ -282,7 +282,8 @@ stateDiagram-v2
 Порядок применения (важно для `{"state":"ON","effect":"makeup"}` из выключенного состояния):
 1. `brightness` (кроме 0), `color` → `base = Solid`, затем `effect ∈ {solid, makeup}` → `base`;
 2. `state` (`ON` → `powerOn()`, `OFF` или `brightness: 0` → `powerOff(manual)`);
-3. `effect ∈ {dark, rainbow, wave, random}` → `startEffect()` (отложится до `ON`, если идёт `SLIDE_ON`).
+3. `effect` = имя временного эффекта из реестра (`dark`, `rainbow`, `wave`) или `random` → `startEffect()`
+   (отложится до `ON`, если идёт `SLIDE_ON`).
 
 Невалидный JSON — команда отбрасывается, запись в лог.
 
@@ -371,7 +372,11 @@ public:
 };
 ```
 
-Реестр (`EffectRegistry.cpp`) — единственное место, где перечислены эффекты:
+Реестр (`EffectRegistry.cpp`) — единственное место, где эффекты связаны со своими именами и экземплярами.
+Кроме значения в `EffectId` (`Types.h`) и строки в `kEffects[]` конкретные эффекты нигде в коде не
+перечисляются: `Protocol` превращает имя в `EffectId` через `effectIdFromName()` и передаёт его как
+`EffectRequest::Temporary` + `LightCommand::effectId`, `Mirror` запускает эффект через `effectInstance(id)`,
+`state.effect` берёт имя из `effectName(id)`, `random` — из `randomEffect()` (Ruling R15).
 
 ```cpp
 // EffectId объявлен в Types.h: enum class EffectId : uint8_t { None = 0, Dark, Rainbow, Wave };
@@ -391,12 +396,13 @@ static const EffectEntry kEffects[] = {
 `SlideAnimation` не входит в реестр: это анимация питания, она обратима с середины (`reverseToOn`) и
 управляется `Mirror` напрямую.
 
-**Как добавить эффект:**
+**Как добавить эффект** — ровно три декларативные правки:
 1. Файл `firmware/lib/MirrorCore/src/effects/<Name>.{h,cpp}` — класс-наследник `Effect` + тест `test/test_effects`.
-2. Значение в `EffectId` и строка в `kEffects[]` (имя = то, что увидит HA).
+2. Значение в `EffectId` (`Types.h`) и строка в `kEffects[]` (`EffectRegistry.cpp`; имя = то, что увидит HA).
 3. Имя в `effect_list` в `ha_mirror.yaml`.
 
-`random` выбирает среди всех записей `kEffects[]` автоматически.
+`Protocol`, `Mirror`, `EffectRequest` и JSON `state` при этом не меняются; `random` выбирает среди всех
+записей `kEffects[]` автоматически.
 
 ---
 
@@ -455,15 +461,16 @@ firmware/
 // Types.h
 enum class PowerState : uint8_t { Off, SlideOn, On, SlideOff };
 enum class BaseMode   : uint8_t { Solid, Makeup };
-enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave };   // временные эффекты
-enum class EffectRequest : uint8_t { None, Solid, Makeup, Dark, Rainbow, Wave, Random };
+enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave };   // временные эффекты (см. kEffects[])
+enum class EffectRequest : uint8_t { None, Solid, Makeup, Random, Temporary };   // Temporary → effectId
 enum class CommandType   : uint8_t { Light, Automation, Makeup, NightMode, RandomEffect };
 
-struct LightCommand {
+struct LightCommand {                // значения уже зажаты Protocol в 0..255; -1 = поле отсутствует
     int8_t        state      = -1;   // -1 нет, 0 OFF, 1 ON
     int16_t       brightness = -1;   // -1 нет, иначе 0..255
     int16_t       r = -1, g = -1, b = -1;
     EffectRequest effect     = EffectRequest::None;
+    EffectId      effectId   = EffectId::None;   // только при effect == Temporary
 };
 
 struct Command {

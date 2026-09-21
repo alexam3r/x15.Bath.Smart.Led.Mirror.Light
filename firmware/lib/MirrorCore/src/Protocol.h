@@ -15,8 +15,10 @@ bool parseSwitch(const uint8_t* payload, size_t len, bool& out);
 
 // Parses a `<base>/set` JSON payload (section 5.2) into `out`. Every field
 // present in `out` is already clamped/sentineled: brightness and r/g/b are
-// clamped to 0..255, -1 means "absent". Returns false on invalid JSON or a
-// non-object top level; unrecognised keys/values are simply ignored.
+// clamped to 0..255, -1 means "absent". `effect`: "solid"/"makeup"/"random"
+// map to their EffectRequest; any registry name becomes Temporary + effectId.
+// Returns false on invalid JSON or a non-object top level; unrecognised
+// keys/values (including unknown effect names) are simply ignored.
 bool parseLight(const uint8_t* payload, size_t len, LightCommand& out);
 
 // Turns a routed topic + payload into a Command. Unknown route -> false.

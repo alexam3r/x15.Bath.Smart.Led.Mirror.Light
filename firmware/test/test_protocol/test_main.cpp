@@ -121,7 +121,8 @@ static void test_light_full_command(void) {
     TEST_ASSERT_EQUAL_INT16(255, out.r);
     TEST_ASSERT_EQUAL_INT16(0, out.g);
     TEST_ASSERT_EQUAL_INT16(0, out.b);
-    TEST_ASSERT_TRUE(EffectRequest::Wave == out.effect);
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == out.effect);
+    TEST_ASSERT_TRUE(EffectId::Wave == out.effectId);
 }
 
 static void test_light_partial_color_keeps_components(void) {
@@ -216,32 +217,50 @@ static void test_light_non_integer_brightness_and_color_ignored(void) {
     TEST_ASSERT_EQUAL_INT16(-1, colorExp.g);
 }
 
+// Base modes and "random" map to their own EffectRequest; every other name
+// is looked up in the effect registry (no per-effect table in Protocol).
 static void test_light_effect_names(void) {
     LightCommand solid;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"solid\"}", solid));
     TEST_ASSERT_TRUE(EffectRequest::Solid == solid.effect);
+    TEST_ASSERT_TRUE(EffectId::None == solid.effectId);
 
     LightCommand makeup;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"makeup\"}", makeup));
     TEST_ASSERT_TRUE(EffectRequest::Makeup == makeup.effect);
+    TEST_ASSERT_TRUE(EffectId::None == makeup.effectId);
 
     LightCommand random;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"random\"}", random));
     TEST_ASSERT_TRUE(EffectRequest::Random == random.effect);
+    TEST_ASSERT_TRUE(EffectId::None == random.effectId);
 
     LightCommand dark;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"dark\"}", dark));
-    TEST_ASSERT_TRUE(EffectRequest::Dark == dark.effect);
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == dark.effect);
+    TEST_ASSERT_TRUE(EffectId::Dark == dark.effectId);
 
     LightCommand rainbow;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"rainbow\"}", rainbow));
-    TEST_ASSERT_TRUE(EffectRequest::Rainbow == rainbow.effect);
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == rainbow.effect);
+    TEST_ASSERT_TRUE(EffectId::Rainbow == rainbow.effectId);
+
+    LightCommand wave;
+    TEST_ASSERT_TRUE(lightOf("{\"effect\": \"wave\"}", wave));
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == wave.effect);
+    TEST_ASSERT_TRUE(EffectId::Wave == wave.effectId);
 }
 
 static void test_light_unknown_effect_ignored(void) {
     LightCommand out;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"bogus\"}", out));
     TEST_ASSERT_TRUE(EffectRequest::None == out.effect);
+    TEST_ASSERT_TRUE(EffectId::None == out.effectId);
+
+    LightCommand wrongCase;  // registry names are case-sensitive
+    TEST_ASSERT_TRUE(lightOf("{\"effect\": \"Wave\"}", wrongCase));
+    TEST_ASSERT_TRUE(EffectRequest::None == wrongCase.effect);
+    TEST_ASSERT_TRUE(EffectId::None == wrongCase.effectId);
 }
 
 static void test_light_invalid_json_rejected(void) {

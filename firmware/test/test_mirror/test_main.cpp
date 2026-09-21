@@ -201,6 +201,13 @@ static Command randomEffectCmd(void) {
     c.type = CommandType::RandomEffect;
     return c;
 }
+static Command lightEffect(EffectRequest req, EffectId id = EffectId::None) {
+    Command c;
+    c.type = CommandType::Light;
+    c.light.effect = req;
+    c.light.effectId = id;
+    return c;
+}
 
 // --- Click(2): table 4.3 ------------------------------------------------
 
@@ -599,6 +606,66 @@ static void test_random_effect_command_starts_effect(void) {
     m.apply(randomEffectCmd(), now);
     run(m, now, 90);
     TEST_ASSERT_FALSE(allPixelsEqual(m.frame(), kSolidDefault));
+}
+
+// §5.2 step 3 / Ruling R15: a named temporary effect arrives as
+// EffectRequest::Temporary plus the registry's EffectId, and Mirror starts
+// exactly that effect — Mirror has no per-effect table. A second request
+// replaces the running one (table 4.1, ON row). Wave/Rainbow are used
+// because zeroRandom's random pick is Dark, so a request mistakenly routed
+// through the random path would show up as Dark.
+static void test_light_named_effect_starts_that_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Wave), now);
+    TEST_ASSERT_TRUE(EffectId::Wave == m.snapshot().effect);
+
+    run(m, now, 100);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Rainbow), now);
+    TEST_ASSERT_TRUE(EffectId::Rainbow == m.snapshot().effect);
+
+    // A Temporary request without an id (never produced by Protocol) is a
+    // no-op rather than a crash, and leaves the running effect alone.
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::None), now);
+    TEST_ASSERT_TRUE(EffectId::Rainbow == m.snapshot().effect);
+    run(m, now, 100);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+}
+
+// "random" in the JSON Light picks from the registry (zeroRandom -> the
+// first kEffects[] entry, Dark).
+static void test_light_random_effect_starts_random_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+
+    m.apply(lightEffect(EffectRequest::Random), now);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+}
+
+// {"state":"ON","effect":"rainbow"} from OFF: the power-on is applied first
+// and the effect is deferred until the slide-in finishes (§5.2 order,
+// table 4.1 SLIDE_ON row).
+static void test_light_on_with_named_effect_defers_it(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+
+    Command c = lightEffect(EffectRequest::Temporary, EffectId::Rainbow);
+    c.light.state = 1;
+    m.apply(c, now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE(EffectId::Rainbow == m.snapshot().effect);
 }
 
 // Table 4.1 "—" (no-op) cells, only reachable through Light's unconditional
@@ -1131,6 +1198,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_makeup_command_powers_on_from_off);
     RUN_TEST(test_night_mode_command_turns_off_when_on);
     RUN_TEST(test_random_effect_command_starts_effect);
+    RUN_TEST(test_light_named_effect_starts_that_effect);
+    RUN_TEST(test_light_random_effect_starts_random_effect);
+    RUN_TEST(test_light_on_with_named_effect_defers_it);
     RUN_TEST(test_power_on_noop_while_slide_on);
     RUN_TEST(test_power_on_noop_while_on);
     RUN_TEST(test_power_off_noop_while_off);

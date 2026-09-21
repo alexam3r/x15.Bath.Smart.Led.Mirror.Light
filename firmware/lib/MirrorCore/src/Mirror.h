@@ -35,7 +35,8 @@ private:
     uint32_t rollAutoEffectDelay();
     void powerOn(uint32_t now);
     void powerOff(bool manual, uint32_t now);
-    void startEffect(EffectRequest req, uint32_t now);
+    void startEffect(EffectId id, uint32_t now);
+    void startRandomEffect(uint32_t now);
     void applyDefaults();
     Rgbw baseColor() const;
     EffectContext ctx() const;

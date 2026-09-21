@@ -79,12 +79,12 @@ bool parseLight(const uint8_t* payload, size_t len, LightCommand& out) {
         } else if (std::strcmp(e, "random") == 0) {
             out.effect = EffectRequest::Random;
         } else {
-            switch (effectIdFromName(e)) {
-                case EffectId::Dark:    out.effect = EffectRequest::Dark;    break;
-                case EffectId::Rainbow: out.effect = EffectRequest::Rainbow; break;
-                case EffectId::Wave:    out.effect = EffectRequest::Wave;    break;
-                case EffectId::None:    break;  // unknown name -> ignored
+            const EffectId id = effectIdFromName(e);
+            if (id != EffectId::None) {
+                out.effect   = EffectRequest::Temporary;
+                out.effectId = id;
             }
+            // else: unknown name -> field ignored
         }
     }
 

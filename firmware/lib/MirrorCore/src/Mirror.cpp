@@ -49,24 +49,17 @@ void Mirror::powerOff(bool manual, uint32_t now) {
     MLOG("[%lu] POWER OFF (manual=%d) -> SLIDE_OFF\n", (unsigned long)now, (int)manual);
 }
 
-void Mirror::startEffect(EffectRequest req, uint32_t now) {
-    EffectId id;
-    switch (req) {
-        case EffectRequest::Dark:    id = EffectId::Dark;    break;
-        case EffectRequest::Rainbow: id = EffectId::Rainbow; break;
-        case EffectRequest::Wave:    id = EffectId::Wave;    break;
-        case EffectRequest::Random:
-            id = randomEffect(rnd_);
-            nextAutoEffectMs_ = rollAutoEffectDelay();  // re-roll even if ignored below (v27)
-            MLOG("[%lu] RANDOM EFFECT rolled id=%d, next auto in %lu ms\n",
-                 (unsigned long)now, (int)id, (unsigned long)nextAutoEffectMs_);
-            break;
-        case EffectRequest::None:
-        case EffectRequest::Solid:
-        case EffectRequest::Makeup:
-        default:
-            return;  // not a temporary-effect id; nothing to do here
-    }
+void Mirror::startRandomEffect(uint32_t now) {
+    const EffectId id = randomEffect(rnd_);
+    nextAutoEffectMs_ = rollAutoEffectDelay();  // re-roll even if ignored below (v27)
+    MLOG("[%lu] RANDOM EFFECT rolled id=%d, next auto in %lu ms\n",
+         (unsigned long)now, (int)id, (unsigned long)nextAutoEffectMs_);
+    startEffect(id, now);
+}
+
+void Mirror::startEffect(EffectId id, uint32_t now) {
+    Effect* fx = effectInstance(id);
+    if (fx == nullptr) return;  // None / not in the registry: nothing to start
 
     if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
         return;  // ignore (table 4.1)
@@ -78,7 +71,7 @@ void Mirror::startEffect(EffectRequest req, uint32_t now) {
 
     // On: replaces whatever is currently running.
     effect_ = id;
-    effectInstance(id)->begin(ctx());
+    fx->begin(ctx());
     lastStepMs_ = now;
     lastIdle_ = now;
     MLOG("[%lu] START EFFECT id=%d\n", (unsigned long)now, (int)id);
@@ -131,9 +124,10 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 powerOn(now);
             }
 
-            if (lc.effect == EffectRequest::Dark || lc.effect == EffectRequest::Rainbow ||
-                lc.effect == EffectRequest::Wave || lc.effect == EffectRequest::Random) {
-                startEffect(lc.effect, now);
+            if (lc.effect == EffectRequest::Temporary) {
+                startEffect(lc.effectId, now);
+            } else if (lc.effect == EffectRequest::Random) {
+                startRandomEffect(now);
             }
             break;
         }
@@ -161,7 +155,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             }
             break;
         case CommandType::RandomEffect:
-            startEffect(EffectRequest::Random, now);
+            startRandomEffect(now);
             break;
     }
 }
@@ -185,7 +179,7 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
                     staticDirty_ = true;
                 }
             } else if (ev.clicks == 3) {
-                startEffect(EffectRequest::Random, now);
+                startRandomEffect(now);
             }
             // clicks == 0 or >= 4: ignore.
             break;
@@ -246,7 +240,7 @@ void Mirror::tick(uint32_t now) {
             powerOff(false, now);
         } else if (effect_ == EffectId::None && base_ == BaseMode::Solid &&
                    (uint32_t)(now - lastIdle_) > nextAutoEffectMs_) {
-            startEffect(EffectRequest::Random, now);
+            startRandomEffect(now);
         }
     }
 
