@@ -49,7 +49,40 @@ void Mirror::powerOff(bool manual, uint32_t now) {
     MLOG("[%lu] POWER OFF (manual=%d) -> SLIDE_OFF\n", (unsigned long)now, (int)manual);
 }
 
-void Mirror::startEffect(EffectRequest /*req*/, uint32_t /*now*/) {}
+void Mirror::startEffect(EffectRequest req, uint32_t now) {
+    EffectId id;
+    switch (req) {
+        case EffectRequest::Dark:    id = EffectId::Dark;    break;
+        case EffectRequest::Rainbow: id = EffectId::Rainbow; break;
+        case EffectRequest::Wave:    id = EffectId::Wave;    break;
+        case EffectRequest::Random:
+            id = randomEffect(rnd_);
+            nextAutoEffectMs_ = rollAutoEffectDelay();  // re-roll even if ignored below (v27)
+            MLOG("[%lu] RANDOM EFFECT rolled id=%d, next auto in %lu ms\n",
+                 (unsigned long)now, (int)id, (unsigned long)nextAutoEffectMs_);
+            break;
+        case EffectRequest::None:
+        case EffectRequest::Solid:
+        case EffectRequest::Makeup:
+        default:
+            return;  // not a temporary-effect id; nothing to do here
+    }
+
+    if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
+        return;  // ignore (table 4.1)
+    }
+    if (power_ == PowerState::SlideOn) {
+        pending_ = id;
+        return;
+    }
+
+    // On: replaces whatever is currently running.
+    effect_ = id;
+    effectInstance(id)->begin(ctx());
+    lastStepMs_ = now;
+    lastIdle_ = now;
+    MLOG("[%lu] START EFFECT id=%d\n", (unsigned long)now, (int)id);
+}
 
 void Mirror::applyDefaults() {
     r_ = cfg::DEFAULT_R;
@@ -68,20 +101,139 @@ void Mirror::begin(uint32_t now) {
     frameDirty_ = true;
 }
 
-void Mirror::apply(const Command& /*cmd*/, uint32_t /*now*/) {}
+void Mirror::apply(const Command& cmd, uint32_t now) {
+    switch (cmd.type) {
+        case CommandType::Light: {
+            const LightCommand& lc = cmd.light;
 
-void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
-    markActivity(now);
-    if (ev.type == ButtonEventType::Click && ev.clicks == 1) {
-        if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
-            powerOn(now);
-        } else {
-            powerOff(true, now);
+            if (lc.brightness >= 1) {
+                brightness_ = static_cast<uint8_t>(lc.brightness);
+                staticDirty_ = true;
+            }
+            if (lc.r >= 0 || lc.g >= 0 || lc.b >= 0) {
+                if (lc.r >= 0) r_ = static_cast<uint8_t>(lc.r);
+                if (lc.g >= 0) g_ = static_cast<uint8_t>(lc.g);
+                if (lc.b >= 0) b_ = static_cast<uint8_t>(lc.b);
+                base_ = BaseMode::Solid;
+                staticDirty_ = true;
+            }
+            if (lc.effect == EffectRequest::Solid) {
+                base_ = BaseMode::Solid;
+                staticDirty_ = true;
+            } else if (lc.effect == EffectRequest::Makeup) {
+                base_ = BaseMode::Makeup;
+                staticDirty_ = true;
+            }
+
+            if (lc.brightness == 0 || lc.state == 0) {
+                powerOff(true, now);
+            } else if (lc.state == 1) {
+                powerOn(now);
+            }
+
+            if (lc.effect == EffectRequest::Dark || lc.effect == EffectRequest::Rainbow ||
+                lc.effect == EffectRequest::Wave || lc.effect == EffectRequest::Random) {
+                startEffect(lc.effect, now);
+            }
+            break;
         }
+        case CommandType::Automation:
+            gate_.setAutomation(cmd.flag);
+            if (cmd.flag) markActivity(now);  // R9: enabling automation never auto-offs instantly
+            break;
+        case CommandType::Makeup:
+            if (cmd.flag) {
+                base_ = BaseMode::Makeup;
+                if (power_ == PowerState::Off || power_ == PowerState::SlideOff) powerOn(now);
+            } else {
+                base_ = BaseMode::Solid;
+            }
+            staticDirty_ = true;
+            break;
+        case CommandType::NightMode:
+            if (cmd.flag) {
+                gate_.setNightMode(true);
+                MLOG("[%lu] NIGHT MODE ON\n", (unsigned long)now);
+                if (power_ == PowerState::SlideOn || power_ == PowerState::On) powerOff(true, now);
+            } else {
+                gate_.setNightMode(false);
+                MLOG("[%lu] NIGHT MODE OFF\n", (unsigned long)now);
+            }
+            break;
+        case CommandType::RandomEffect:
+            startEffect(EffectRequest::Random, now);
+            break;
     }
 }
 
-void Mirror::onPir(bool /*level*/, uint32_t /*now*/) {}
+void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
+    markActivity(now);
+    switch (ev.type) {
+        case ButtonEventType::Click:
+            if (ev.clicks == 1) {
+                if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
+                    powerOn(now);
+                } else {
+                    powerOff(true, now);
+                }
+            } else if (ev.clicks == 2) {
+                if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
+                    base_ = BaseMode::Makeup;
+                    powerOn(now);
+                } else {
+                    base_ = (base_ == BaseMode::Solid) ? BaseMode::Makeup : BaseMode::Solid;
+                    staticDirty_ = true;
+                }
+            } else if (ev.clicks == 3) {
+                startEffect(EffectRequest::Random, now);
+            }
+            // clicks == 0 or >= 4: ignore.
+            break;
+        case ButtonEventType::HoldStart:
+            if (gate_.nightMode()) {
+                gate_.setNightMode(false);
+                holdLocked_ = true;  // bug A fix: this hold must not power on or dim
+            } else if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
+                powerOn(now);
+            }
+            break;
+        case ButtonEventType::HoldTick:
+            if (!holdLocked_ && power_ == PowerState::On) {
+                effect_ = EffectId::None;
+                int v = static_cast<int>(brightness_) + dimDir_;
+                if (v >= cfg::DIM_MAX) {
+                    v = cfg::DIM_MAX;
+                    dimDir_ = static_cast<int16_t>(-cfg::DIM_STEP);
+                }
+                if (v <= cfg::DIM_MIN) {
+                    v = cfg::DIM_MIN;
+                    dimDir_ = static_cast<int16_t>(cfg::DIM_STEP);
+                }
+                brightness_ = static_cast<uint8_t>(v);
+                staticDirty_ = true;
+            }
+            break;
+        case ButtonEventType::HoldEnd:
+            holdLocked_ = false;
+            break;
+        case ButtonEventType::None:
+        default:
+            break;
+    }
+}
+
+void Mirror::onPir(bool level, uint32_t now) {
+    pir_ = level;
+    if (level) {
+        if (power_ == PowerState::Off && gate_.canAutoOn(now)) {
+            powerOn(now);
+            MLOG("[%lu] PIR triggered POWER ON\n", (unsigned long)now);
+        }
+        if (power_ == PowerState::SlideOn || power_ == PowerState::On) {
+            markActivity(now);  // R9: regardless of automation
+        }
+    }
+}
 
 void Mirror::tick(uint32_t now) {
     gate_.tick(now);
@@ -114,6 +266,28 @@ void Mirror::tick(uint32_t now) {
                 MLOG("[%lu] SLIDE_OFF -> OFF (defaults applied)\n", (unsigned long)now);
             }
         }
+    }
+
+    if (power_ == PowerState::On && effect_ != EffectId::None) {
+        Effect* fx = effectInstance(effect_);
+        if (fx != nullptr && (uint32_t)(now - lastStepMs_) >= static_cast<uint32_t>(fx->stepIntervalMs())) {
+            lastStepMs_ = now;
+            bool running = fx->step(frame_, ctx());
+            frame_.scale(brightness_);
+            frameDirty_ = true;
+            if (!running) {
+                effect_ = EffectId::None;
+                lastIdle_ = now;
+                staticDirty_ = true;
+            }
+        }
+    }
+
+    if (power_ == PowerState::On && effect_ == EffectId::None && staticDirty_) {
+        frame_.fill(baseColor());
+        staticDirty_ = false;
+        frame_.scale(brightness_);
+        frameDirty_ = true;
     }
 }
 
