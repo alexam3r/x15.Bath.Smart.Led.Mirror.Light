@@ -684,9 +684,12 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 - Работа в ветке `refactor/v1`, коммит после каждой задачи; push — только по команде владельца.
 - TDD: сначала падающий тест, затем минимальная реализация, затем зелёный прогон `pio test -e native`.
 
-### Вне плана: Этап 4 — `ha_mirror.yaml`
+### Вне плана: Этап 4 — `ha_mirror.yaml` (выполнено)
 JSON Light (`schema: json`, `brightness_scale: 255`, `supported_color_modes: [rgb]`, `effect: true`,
-`effect_list`, `availability_topic`), switch автоматики и Макияжа, binary_sensor на `pir/state`, button эффекта.
+`effect_list`, `availability_topic`, `transition: false`, `flash: false`), switch автоматики и Макияжа,
+binary_sensor на `pir/state`, button эффекта, диагностический sensor версии прошивки (`fw`).
+`unique_id` сохранены из прежнего конфига; все команды — `retain: false` (прошивка переподписывается на
+`set`/`+/set` при каждом переподключении, retained-команда выполнилась бы повторно).
 
 ### Задачи
 

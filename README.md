@@ -187,11 +187,24 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/set -m '{
 ## Home Assistant
 
 HA MQTT Discovery в v1.0.0 **удалён** — зеркало ничего не публикует в `homeassistant/…/config`. Интеграция
-настраивается вручную через YAML: `ha_mirror.yaml` в корне репозитория. Он появится на **Этапе 4**
-(пока в репозитории отсутствует) и будет описывать JSON Light (`schema: json`, `brightness_scale: 255`,
-`supported_color_modes: [rgb]`, `effect_list` из шести значений, `availability_topic`), switch автоматики
-и Макияжа, binary_sensor на `pir/state`, кнопку случайного эффекта — см. ARCHITECTURE.md, конец §12
-(«Вне плана: Этап 4»).
+настраивается вручную через YAML: [`ha_mirror.yaml`](ha_mirror.yaml) в корне репозитория. Файл можно положить
+в `packages/` (`homeassistant: packages: !include_dir_named packages`) или скопировать его блок `mqtt:` в
+`configuration.yaml`. Он описывает:
+
+| Сущность | unique_id | Топики |
+|---|---|---|
+| light «Зеркало в душевой» — JSON Light: `brightness_scale: 255`, `supported_color_modes: [rgb]`, `effect_list: solid, makeup, random, dark, rainbow, wave` | `mirror_bath_flat8` | `set` / `state` |
+| switch «Зеркало: автодетекция движения» | `mirror_motion_switch` | `motion/set` / `motion/state` |
+| switch «Зеркало: режим Макияж» | `mirror_makeup_switch` | `makeup/set` / `makeup/state` |
+| binary_sensor «Движение ванная» (`device_class: motion`) | `mirror_motion_bath_flat8` | `pir/state` |
+| button «Зеркало: эффект» | `mirror_effect_button` | `effect/set` |
+| sensor «Зеркало: прошивка» (диагностика, поле `fw`) | `mirror_firmware_version` | `state` |
+
+Все сущности зависят от `availability` (LWT). `unique_id` совпадают с прежним конфигом, поэтому история и
+привязки в УДЯ сохраняются; «Движение ванная» теперь показывает реальный PIR, а не флаг автоматики.
+Команды публикуются **без retain**: прошивка переподписывается на `set` и `+/set` после каждого
+переподключения, и retained-команда выполнилась бы повторно. `transition` и `flash` отключены — прошивка
+их не поддерживает.
 
 > **Важно:** топик `motion_disable/state` и команда `motion_disable/set` **не выносятся в HA** — они нужны
 > только для Node-RED (ночная автоматика). Обычный переключатель PIR-автоматики в HA/Алисе — через
@@ -201,8 +214,7 @@ HA MQTT Discovery в v1.0.0 **удалён** — зеркало ничего н�
 
 ## Интеграция с Алисой
 
-Актуально после того, как объекты из `ha_mirror.yaml` (см. «Home Assistant» выше, Этап 4) появятся в HA —
-названия сущностей ниже это то, что `ha_mirror.yaml` будет описывать. Кастомизация capabilities и
+Сущности ниже описаны в `ha_mirror.yaml` (см. «Home Assistant» выше). Кастомизация capabilities и
 добавление объектов делается **только через UI** (ярлыки в Yandex Smart Home):
 
 ```
@@ -292,7 +304,7 @@ Network watchdog следит за WiFi + MQTT и перезагружает ESP
 │   │   ├── secrets.h                  # WiFi/MQTT credentials, MQTT_BASE (в .gitignore)
 │   │   └── secrets.h.sample           # шаблон secrets.h (коммитится в репо)
 │   └── test/                          # Unity-тесты MirrorCore, env:native
-└── ha_mirror.yaml                     # HA YAML — добавляется на Этапе 4, пока отсутствует
+└── ha_mirror.yaml                     # HA YAML: MQTT JSON Light + switch/binary_sensor/button/sensor
 ```
 
 Каталог `firmware/` самодостаточен — это корень PlatformIO-проекта. Команды сборки/прошивки выполняются из него:
@@ -318,7 +330,7 @@ pio run -e esp32-s3-zero -t upload
   `pir/state`; LWT `availability`; удержание кнопки из `OFF` включает свет со slide-анимацией; включение
   во время slide-out разворачивает анимацию с текущего радиуса; единообразный switch-payload
   (`ON/OFF/1/0/TRUE/FALSE`); `brightness: 0` = выключение; HA MQTT Discovery удалён (ручной
-  `ha_mirror.yaml`, Этап 4); стабильный MQTT client id по MAC; в `state` добавлены `effect`, `automation`,
+  `ha_mirror.yaml`); стабильный MQTT client id по MAC; в `state` добавлены `effect`, `automation`,
   `night_mode`, `fw` (полный список — ARCHITECTURE.md §11.1).
   Исправленные баги v27: удержание для снятия ночного режима больше не «утекает» в диммирование и не
   включает свет; Discovery-пакет (не помещавшийся в 256-байтный буфер PubSubClient) убран вместе с

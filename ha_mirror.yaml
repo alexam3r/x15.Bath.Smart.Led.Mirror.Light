@@ -1,0 +1,136 @@
+# ============================================================
+# BATH MIRROR — ESP32-S3 Zero (SK6812 RGBW), прошивка v1.0.0
+# ============================================================
+# MQTT-сущности умного зеркала ванной. Только ручной YAML — HA MQTT Discovery
+# прошивка не публикует.
+#
+# Подключение (любой вариант):
+#   1) Пакет: положить файл в каталог packages/ и подключить в configuration.yaml:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   2) Скопировать блок `mqtt:` в configuration.yaml. Если `mqtt:` там уже есть —
+#      добавить сущности в существующие списки light / switch / binary_sensor / button / sensor.
+#
+# Топики: home/flat8/bath/mirror/...  (= MQTT_BASE в firmware/src/secrets.h).
+# Протокол полностью описан в ARCHITECTURE.md, раздел 5.
+#
+# Важно:
+#  - Команды публикуются БЕЗ retain (retain: false). Прошивка переподписывается на
+#    <base>/set и <base>/+/set после каждого переподключения: retained-команда
+#    выполнилась бы повторно (retained motion_disable/set ON гасил бы горящее зеркало
+#    после любого сбоя WiFi, retained effect/set запускал бы эффект).
+#  - Все сущности привязаны к <base>/availability (LWT прошивки): если зеркало пропало
+#    из сети, HA покажет «недоступно», а не последнее известное состояние.
+#  - supported_color_modes — только rgb. color_temp / rgbw НЕ включать: Yandex Smart Home
+#    показывает color_setting.rgb только для чистого rgb. Белый канал — эффект «makeup»
+#    или переключатель «Зеркало: режим Макияж». Любой цвет из HA/Алисы переводит зеркало в solid.
+#  - transition и flash прошивка не поддерживает — отключены, чтобы HA их не предлагал.
+#  - Ночной режим PIR (<base>/motion_disable/set) — только для Node-RED, в HA не выводится.
+#  - unique_id совпадают с прежним конфигом (docs/mirror.yaml): история сущностей и
+#    привязки в УДЯ сохраняются. binary_sensor «Движение ванная» теперь читает реальный
+#    PIR (<base>/pir/state), а не флаг автоматики, как раньше.
+#
+# УДЯ (Алиса):
+#   light  «Зеркало в душевой»              → on_off + brightness + color_setting.rgb
+#   switch «Зеркало: автодетекция движения» → «выключи автоматику»
+#   switch «Зеркало: режим Макияж»          → «включи макияж»
+#   button «Зеркало: эффект»                → сценарий «запустить случайный эффект»
+
+mqtt:
+
+  light:
+    # --- Зеркало: MQTT JSON Light (вкл/выкл, яркость 0..255, RGB, эффекты) ---
+    # effect_list: solid/makeup — базовый режим (RGB / только белый канал W);
+    # dark/rainbow/wave — временные эффекты (4–9 с), после них state.effect снова solid/makeup;
+    # random — один из dark/rainbow/wave (в state отражается реально запущенный).
+    - name: "Зеркало в душевой"
+      unique_id: mirror_bath_flat8
+      schema: json
+      command_topic: "home/flat8/bath/mirror/set"
+      state_topic: "home/flat8/bath/mirror/state"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      payload_available: "online"
+      payload_not_available: "offline"
+      brightness: true
+      brightness_scale: 255
+      supported_color_modes:
+        - rgb
+      effect: true
+      effect_list:
+        - solid
+        - makeup
+        - random
+        - dark
+        - rainbow
+        - wave
+      transition: false
+      flash: false
+      retain: false
+      qos: 0
+      device: &mirror_device
+        identifiers: "bath_mirror_esp32s3"
+        name: "Контроллер Зеркала Ванной"
+        model: "ESP32-S3-Zero"
+        manufacturer: "DIY-Vega"
+        suggested_area: "bathroom"
+
+  switch:
+    # --- Автоматика PIR (Алиса: «выключи автоматику») ---
+    # OFF держится до явного ON: нет автовключения, автовыключения через 15 мин и автоэффектов.
+    # Внутренняя 15-секундная пауза PIR после ручного выключения на этот переключатель не влияет.
+    - name: "Зеркало: автодетекция движения"
+      unique_id: mirror_motion_switch
+      command_topic: "home/flat8/bath/mirror/motion/set"
+      state_topic: "home/flat8/bath/mirror/motion/state"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      payload_on: "ON"
+      payload_off: "OFF"
+      retain: false
+      icon: "mdi:motion-sensor"
+      device: *mirror_device
+
+    # --- Режим Макияж (Алиса: «включи макияж») ---
+    # Белый канал W вместо RGB. Если зеркало выключено — ON его включит.
+    - name: "Зеркало: режим Макияж"
+      unique_id: mirror_makeup_switch
+      command_topic: "home/flat8/bath/mirror/makeup/set"
+      state_topic: "home/flat8/bath/mirror/makeup/state"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      payload_on: "ON"
+      payload_off: "OFF"
+      retain: false
+      icon: "mdi:face-woman-shimmer"
+      device: *mirror_device
+
+  binary_sensor:
+    # --- Реальное движение по PIR (фронты датчика, retained) ---
+    - name: "Движение ванная"
+      unique_id: mirror_motion_bath_flat8
+      state_topic: "home/flat8/bath/mirror/pir/state"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      payload_on: "ON"
+      payload_off: "OFF"
+      device_class: motion
+      device: *mirror_device
+
+  button:
+    # --- Случайный эффект (любой payload; в выключенном состоянии игнорируется) ---
+    - name: "Зеркало: эффект"
+      unique_id: mirror_effect_button
+      command_topic: "home/flat8/bath/mirror/effect/set"
+      payload_press: "GO"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      retain: false
+      icon: "mdi:auto-fix"
+      device: *mirror_device
+
+  sensor:
+    # --- Версия прошивки (диагностика; поле fw из state JSON) ---
+    - name: "Зеркало: прошивка"
+      unique_id: mirror_firmware_version
+      state_topic: "home/flat8/bath/mirror/state"
+      value_template: "{{ value_json.fw }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      entity_category: diagnostic
+      icon: "mdi:chip"
+      device: *mirror_device
