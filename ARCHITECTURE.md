@@ -239,7 +239,7 @@ stateDiagram-v2
 | Команда | Действие |
 |---|---|
 | JSON `set` | см. 5.2, порядок применения фиксирован |
-| `motion/set ON` | `automation = true`, сбросить `cooldown`, отметить активность (Ruling R9) |
+| `motion/set ON` | `automation = true`, отметить активность (Ruling R9); `cooldown` сбрасывается, **только если автоматика была выключена** (как R18): повторный ON не отменяет 15-секундную паузу PIR |
 | `motion/set OFF` | `automation = false` (свет не трогается) |
 | `makeup/set ON` | `base = Makeup`; если `OFF`/`SLIDE_OFF` → `powerOn()` |
 | `makeup/set OFF` | `base = Solid` |

@@ -4,10 +4,12 @@
 #include "Config.h"
 
 void MotionGate::setAutomation(bool on) {
-    automation_ = on;
-    if (on) {
+    // Same rule as setNightMode (R18): only a real off -> on transition means
+    // "PIR active now"; a redundant ON must not cancel a running cooldown.
+    if (on && !automation_) {
         cooldown_.cancel();
     }
+    automation_ = on;
 }
 
 void MotionGate::setNightMode(bool on) {

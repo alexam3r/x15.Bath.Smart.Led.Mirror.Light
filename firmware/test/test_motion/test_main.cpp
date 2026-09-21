@@ -183,15 +183,28 @@ static void test_power_on_clears_night_mode_and_cooldown(void) {
     TEST_ASSERT_TRUE(gate.canAutoOn(t0 + 1));  // nightMode, cooldown, blackout all cleared
 }
 
+// Turning automation back ON (it was off) means "PIR active now" (§4.5).
 static void test_automation_on_clears_cooldown(void) {
     MotionGate gate;
     const uint32_t t0 = 2000;
 
+    gate.setAutomation(false);
     gate.onManualOff(t0);
-    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + 100));  // cooldown running
-
-    gate.setAutomation(true);  // re-affirm ON (was already true): still clears cooldown
+    gate.setAutomation(true);
     TEST_ASSERT_TRUE(gate.canAutoOn(t0 + 100));
+}
+
+// Same rule as R18 for night mode: a redundant ON (automation already on,
+// e.g. Alice "включи автоматику" repeated) must not cancel a running cooldown.
+static void test_automation_on_when_already_on_keeps_cooldown(void) {
+    MotionGate gate;
+    const uint32_t t0 = 2000;
+
+    gate.onManualOff(t0);
+    gate.setAutomation(true);  // automation was already on
+    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + 100));
+    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + cfg::PIR_COOLDOWN_MS - 1));
+    TEST_ASSERT_TRUE(gate.canAutoOn(t0 + cfg::PIR_COOLDOWN_MS));
 }
 
 static void test_cooldown_survives_millis_wraparound(void) {
@@ -253,6 +266,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_night_mode_off_clears_cooldown_when_night_was_on);
     RUN_TEST(test_power_on_clears_night_mode_and_cooldown);
     RUN_TEST(test_automation_on_clears_cooldown);
+    RUN_TEST(test_automation_on_when_already_on_keeps_cooldown);
     RUN_TEST(test_cooldown_survives_millis_wraparound);
     RUN_TEST(test_motion_gate_tick_retires_expired_cooldown);
     RUN_TEST(test_motion_gate_tick_does_not_clear_running_cooldown);

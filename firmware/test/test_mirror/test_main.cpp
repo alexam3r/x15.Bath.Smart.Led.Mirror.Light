@@ -446,10 +446,11 @@ static void test_hold_in_night_mode_only_clears_night_mode(void) {
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
 }
 
-// Ruling R18: a redundant motion_disable/set OFF arriving after a night-mode
-// hold (night mode is already off by then) must not cancel the 15 s PIR
-// cooldown that the hold started.
-static void test_redundant_night_mode_off_keeps_hold_cooldown(void) {
+// A night-mode button hold starts a 15 s PIR cooldown. A redundant command
+// that would only re-affirm the current state must not cancel it (R18):
+// motion_disable/set OFF when night mode is already off, or motion/set ON
+// when automation is already on.
+static void assertRedundantCommandKeepsHoldCooldown(const Command& redundant) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
@@ -460,23 +461,32 @@ static void test_redundant_night_mode_off_keeps_hold_cooldown(void) {
     m.onButton(holdStart(), now);
     now += 600;
     m.onButton(holdEnd(), now);
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    TEST_ASSERT_TRUE(m.snapshot().automation);
 
     now += 550;
-    m.apply(nightModeCmd(false), now);  // redundant: night mode already off
-    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    m.apply(redundant, now);
 
     while (now < holdStartAt + cfg::PIR_COOLDOWN_MS - 50) {
         now += 5;
         m.onPir(true, now);
         m.tick(now);
         TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(),
-                                  "redundant night-mode OFF let the PIR relight the mirror within 15 s of the hold");
+                                  "redundant command let the PIR relight the mirror within 15 s of the hold");
     }
 
     now = holdStartAt + cfg::PIR_COOLDOWN_MS + 50;
     m.tick(now);
     m.onPir(true, now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+}
+
+static void test_redundant_night_mode_off_keeps_hold_cooldown(void) {
+    assertRedundantCommandKeepsHoldCooldown(nightModeCmd(false));
+}
+
+static void test_redundant_automation_on_keeps_hold_cooldown(void) {
+    assertRedundantCommandKeepsHoldCooldown(automationCmd(true));
 }
 
 // Bug A lock: a hold started in night mode must not dim for the rest of
@@ -1252,6 +1262,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_hold_in_night_mode_only_clears_night_mode);
     RUN_TEST(test_night_mode_hold_never_dims);
     RUN_TEST(test_redundant_night_mode_off_keeps_hold_cooldown);
+    RUN_TEST(test_redundant_automation_on_keeps_hold_cooldown);
     RUN_TEST(test_dim_bounces_5_255);
     RUN_TEST(test_click_ge4_ignored);
 
