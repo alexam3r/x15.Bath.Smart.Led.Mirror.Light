@@ -41,6 +41,45 @@ static void test_countdown_does_not_refire_after_wrap(void) {
     TEST_ASSERT_FALSE(c.running(wrapped_now));
 }
 
+// Selectivity half of R7: update() must NOT blindly deactivate — a
+// countdown that has not yet expired must stay active and running(). A
+// broken `update()` that just sets `active = false` unconditionally would
+// pass test_countdown_does_not_refire_after_wrap above (it only ever
+// calls update() after real expiry) but must fail here.
+static void test_countdown_update_does_not_clear_running_countdown(void) {
+    Countdown c;
+    const uint32_t t = 1000;
+
+    c.start(t, 15000);
+
+    c.update(t + 14999);  // one ms before expiry: still running
+    TEST_ASSERT_TRUE(c.active);
+    TEST_ASSERT_TRUE(c.running(t + 14999));
+
+    c.update(t + 15000);  // exactly at expiry: now retired
+    TEST_ASSERT_FALSE(c.active);
+    TEST_ASSERT_FALSE(c.running(t + 15000));
+}
+
+// Makes the R7 refire hazard concrete: two identical countdowns, both
+// fully expired; only one has update() called on it before the uint32_t
+// clock wraps a full 2^32 ms cycle back near startMs. The un-retired one
+// incorrectly reports running() == true again; the retired one does not.
+static void test_countdown_refire_hazard_without_update(void) {
+    Countdown notUpdated;
+    Countdown updated;
+    const uint32_t t = 1000;
+
+    notUpdated.start(t, 15000);
+    updated.start(t, 15000);
+
+    updated.update(t + 20000);  // only this one gets retired past expiry
+
+    const uint32_t wrapped_now = t + 5;  // coincides with t + 2^32 + 5
+    TEST_ASSERT_TRUE(notUpdated.running(wrapped_now));   // hazard: refires
+    TEST_ASSERT_FALSE(updated.running(wrapped_now));     // R7 fix: does not
+}
+
 // --- MotionGate ---------------------------------------------------------
 
 static void test_auto_on_allowed_by_default(void) {
@@ -156,9 +195,29 @@ static void test_motion_gate_tick_retires_expired_cooldown(void) {
     TEST_ASSERT_TRUE(gate.canAutoOn(t0 + 5));
 }
 
+// Selectivity half of R7 through MotionGate::tick(): ticking while the
+// cooldown is still legitimately running must leave it blocking. A broken
+// tick() that unconditionally clears cooldown/blackout would pass
+// test_motion_gate_tick_retires_expired_cooldown above (it only ticks
+// after real expiry) but must fail here.
+static void test_motion_gate_tick_does_not_clear_running_cooldown(void) {
+    MotionGate gate;
+    const uint32_t t0 = 1000;
+
+    gate.onManualOff(t0);
+
+    gate.tick(t0 + 10000);  // well before the 15s cooldown elapses
+    TEST_ASSERT_FALSE(gate.canAutoOn(t0 + 10000));
+
+    gate.tick(t0 + 15000);  // cooldown has now elapsed
+    TEST_ASSERT_TRUE(gate.canAutoOn(t0 + 15000));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_countdown_does_not_refire_after_wrap);
+    RUN_TEST(test_countdown_update_does_not_clear_running_countdown);
+    RUN_TEST(test_countdown_refire_hazard_without_update);
     RUN_TEST(test_auto_on_allowed_by_default);
     RUN_TEST(test_manual_off_blocks_for_15s);
     RUN_TEST(test_blackout_blocks_for_2s);
@@ -168,5 +227,6 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_automation_on_clears_cooldown);
     RUN_TEST(test_cooldown_survives_millis_wraparound);
     RUN_TEST(test_motion_gate_tick_retires_expired_cooldown);
+    RUN_TEST(test_motion_gate_tick_does_not_clear_running_cooldown);
     return UNITY_END();
 }
