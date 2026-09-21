@@ -395,6 +395,34 @@ static void test_state_json_zero_when_buffer_too_small(void) {
     TEST_ASSERT_EQUAL_INT(0, (int)n);
 }
 
+// Ruling R16: Network republishes the retained `state` only when a field
+// that actually appears in its JSON changed. `pir` is not in the state JSON
+// (it has its own pir/state sidecar), so a PIR-only change must not count;
+// every other snapshot field must.
+static void test_state_json_differs_ignores_pir_only(void) {
+    StateSnapshot a;
+    StateSnapshot b = a;
+    TEST_ASSERT_FALSE(stateJsonDiffers(a, b));
+
+    b.pir = !a.pir;
+    TEST_ASSERT_FALSE_MESSAGE(stateJsonDiffers(a, b), "a PIR-only change counted as a state change");
+
+    StateSnapshot c;
+    c = a; c.on = !a.on;                    TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.brightness = 17;               TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.r = 1;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.g = 2;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.b = 3;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.base = BaseMode::Makeup;       TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.effect = EffectId::Wave;       TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.automation = !a.automation;    TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.nightMode = !a.nightMode;      TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+
+    // A real change plus a PIR change still counts.
+    c = a; c.brightness = 17; c.pir = !a.pir;
+    TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_topics_built_from_base);
@@ -418,5 +446,6 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_state_json_running_effect_and_makeup);
     RUN_TEST(test_state_json_fits_384_bytes);
     RUN_TEST(test_state_json_zero_when_buffer_too_small);
+    RUN_TEST(test_state_json_differs_ignores_pir_only);
     return UNITY_END();
 }

@@ -138,3 +138,9 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap) {
     if (measureJson(doc) >= cap) return 0;
     return serializeJson(doc, buf, cap);
 }
+
+bool stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b) {
+    StateSnapshot aWithoutPir = a;
+    aWithoutPir.pir = b.pir;  // pir is not part of the state JSON
+    return !(aWithoutPir == b);
+}

@@ -35,6 +35,7 @@ QueueHandle_t cmdQueueHandle  = nullptr;
 QueueHandle_t snapQueueHandle = nullptr;
 
 StateSnapshot latest;
+StateSnapshot lastStatePublished;  // what `<base>/state` last carried (publishChanged()'s diffing)
 bool          pending          = false;
 uint32_t      lastPublish      = 0;
 uint32_t      lastStatePublish = 0;
@@ -45,19 +46,25 @@ bool lastMakeup     = false;
 bool lastNightMode  = false;
 bool lastPir        = false;
 
-// Publishes only `<base>/state` (retain), with the v27 dim-green 50 ms
-// blink around it. Logs and skips if the snapshot does not fit STATE_JSON_CAP.
-void publishState(const StateSnapshot& s) {
+// Publishes only `<base>/state` (retain). blink=true — only the 10 s
+// heartbeat (Ruling R16) — wraps it in the v27 dim-green 50 ms status-LED
+// blink; event-driven publishes leave the status LED alone, so its
+// NeoPixel show() calls (the R12 race with the strips, ARCHITECTURE.md 3.5)
+// don't scale with how often the snapshot changes. Logs and skips if the
+// snapshot does not fit STATE_JSON_CAP.
+void publishState(const StateSnapshot& s, bool blink) {
     char buf[cfg::STATE_JSON_CAP];
     const size_t n = buildStateJson(s, buf, sizeof(buf));
     if (n == 0) {
         MLOG("state json did not fit\n");
         return;
     }
-    statusLed.set(0, 10, 0);
-    mqtt.publish(topics.state, buf, true);
-    vTaskDelay(pdMS_TO_TICKS(50));
-    statusLed.set(0, 0, 0);
+    if (blink) statusLed.set(0, 10, 0);
+    if (mqtt.publish(topics.state, buf, true)) lastStatePublished = s;
+    if (blink) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+        statusLed.set(0, 0, 0);
+    }
 }
 
 // force=true (publishAll): all four sidecars, unconditionally (bug C fix).
@@ -84,12 +91,14 @@ void publishSidecars(const StateSnapshot& s, bool force) {
 }
 
 void publishAll(const StateSnapshot& s) {
-    publishState(s);
+    publishState(s, false);
     publishSidecars(s, true);
 }
 
+// `state` only if a field of its JSON changed — a PIR-only change goes out
+// on pir/state alone (Ruling R16).
 void publishChanged(const StateSnapshot& s) {
-    publishState(s);
+    if (stateJsonDiffers(lastStatePublished, s)) publishState(s, false);
     publishSidecars(s, false);
 }
 
@@ -239,7 +248,7 @@ void task(void*) {
             }
 
             if ((uint32_t)(now - lastStatePublish) >= cfg::TELEMETRY_PERIOD_MS) {
-                publishState(latest);  // heartbeat: state only
+                publishState(latest, true);  // heartbeat: state only, with the status-LED blink
                 lastStatePublish = now;
             }
         }

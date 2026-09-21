@@ -28,3 +28,8 @@ bool toCommand(Route route, const uint8_t* payload, size_t len, Command& out);
 // `buf` (capacity `cap`). Returns bytes written (NUL not counted), or 0 if
 // it would not fit.
 size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);
+
+// True if `a` and `b` would serialize to different `<base>/state` JSON, i.e.
+// any snapshot field except `pir` (which only goes to `<base>/pir/state`)
+// differs. Network uses it to skip republishing `state` on PIR-only changes.
+bool stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);
