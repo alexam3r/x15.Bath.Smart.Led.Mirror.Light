@@ -8,3 +8,5 @@ firmware/src/*.bak
 homeassistant/*
 .claude
 graphify-out
+.tools/
+.claude-rc
