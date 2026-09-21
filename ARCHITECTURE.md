@@ -582,8 +582,11 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);   // 0 п�
 | `esp32-s3-zero-debug` | 720725 B | 720833 B (+108 B, +0.01%) | 44848 B | 46656 B (+1808 B, +4.03%) |
 
 Оба окружения собираются без единого `warning:`/`error:` в `firmware/src/*` и `firmware/lib/MirrorCore/*`.
-Рост RAM — накладные расходы очередей FreeRTOS (`cmdQueue`, `snapQueue`) и отдельного объекта `StatusLed`,
-которых в v27 не было; укладывается в бюджет 4 MB Flash / 327 KB RAM с большим запасом.
+Рост RAM (статический, `.data`+`.bss`) — **не** очереди FreeRTOS (`xQueueCreate` кладёт их буфер в кучу) и
+**не** буферы `Adafruit_NeoPixel` (тоже куча, выделяются в конструкторе). Источник — новые статические
+объекты: `Topics topics` в `Network.cpp` (12 полей `char[96]` = 1152 Б) и `Frame frame_` внутри `Mirror`
+(168 × `sizeof(Rgbw)` = 672 Б); в сумме ≈ 1824 Б, что близко к измеренным +1808 Б. Укладывается в бюджет
+4 MB Flash / 327 KB RAM с большим запасом.
 
 ---
 
