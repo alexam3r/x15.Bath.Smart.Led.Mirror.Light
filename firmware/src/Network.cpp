@@ -39,6 +39,7 @@ StateSnapshot lastStatePublished;  // what `<base>/state` last carried (publishC
 bool          pending          = false;
 uint32_t      lastPublish      = 0;
 uint32_t      lastStatePublish = 0;
+bool          stackReported    = false;  // stack high-water mark logged once (debug build)
 
 // Last sidecar values actually published, for publishChanged()'s diffing.
 bool lastAutomation = false;
@@ -227,6 +228,18 @@ void task(void*) {
                 pending          = false;
                 lastPublish      = connectedAt;
                 lastStatePublish = connectedAt;
+
+                if (!stackReported) {
+                    // Debug build only (MLOG compiles to nothing otherwise):
+                    // minimum free stack so far, once WiFi connect, MQTT
+                    // connect and publishAll() have all run. ESP-IDF's
+                    // StackType_t is uint8_t, so the value is in bytes.
+                    MLOG("[%lu] NetworkTask stack high-water mark: %lu of %lu bytes free\n",
+                         (unsigned long)connectedAt,
+                         (unsigned long)uxTaskGetStackHighWaterMark(nullptr),
+                         (unsigned long)cfg::NETWORK_TASK_STACK);
+                    stackReported = true;
+                }
             } else {
                 vTaskDelay(pdMS_TO_TICKS(cfg::MQTT_RETRY_DELAY_MS));
             }

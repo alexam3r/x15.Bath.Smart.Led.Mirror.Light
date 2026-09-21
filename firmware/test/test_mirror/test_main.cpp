@@ -3,8 +3,6 @@
 // Arduino/FreeRTOS dependency). Driven with a fake clock via run(), which
 // calls tick() every 5 ms (a PlatformIO test filter runs only this suite:
 // `pio test -e native -f test_mirror`).
-//
-// Grown test-first in slices (RED/GREEN evidence per slice).
 #include <unity.h>
 
 #include "Config.h"

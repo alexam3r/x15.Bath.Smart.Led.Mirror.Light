@@ -1,7 +1,6 @@
 // Mirror — the single-owner state machine (ARCHITECTURE.md section 4
-// state machine, 8.1 interface). Grown test-first in slices — see
-// firmware/test/test_mirror/test_main.cpp for the TDD history (RED/GREEN
-// evidence per slice).
+// state machine, 8.1 interface). Behaviour is specified by the tests in
+// firmware/test/test_mirror/test_main.cpp.
 #include "Mirror.h"
 
 #include "Log.h"
@@ -218,6 +217,9 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
 }
 
 void Mirror::onPir(bool level, uint32_t now) {
+    if (level && !pir_) {
+        MLOG("[%lu] PIR rising edge\n", (unsigned long)now);  // edge only: no per-loop spam
+    }
     pir_ = level;
     if (level) {
         if (power_ == PowerState::Off && gate_.canAutoOn(now)) {

@@ -292,8 +292,8 @@ static void test_rainbow_snake_golden_frames(void) {
 static float waveDarkFactor(uint16_t i, uint16_t center) {
     // v27 getDarkFactor (main.cpp lines 1169-1175 @ d4421dd), using
     // MirrorCore's own already-tested ringDist(). Only used by the
-    // meeting-point test below, per the task-4 binding, to check rule #6
-    // (max, never sum) independently of the golden hardcoded frames.
+    // meeting-point test below, to check rule #6 (max, never sum)
+    // independently of the golden hardcoded frames.
     uint16_t d = ringDist(i, center);
     if (d <= cfg::WAVE_CORE) return 1.0f;
     if (d <= cfg::WAVE_RADIUS) {
@@ -337,10 +337,10 @@ static void test_wave_fades_back_to_base(void) {
 
 // Rule #6: the two waves (CW/CCW) combine with MAX, never a sum, so no pixel
 // can be darker than either single wave and no channel can exceed base
-// (which a summed/overflowed darkening would violate). Checked, per the
-// task-4 binding, by recomputing the expected pixel independently in this
-// test from ringDist for steps limit-2..limit+2 (center = CENTERS[0] = 9,
-// from the deterministic zeroRandom) rather than a single hardcoded value.
+// (which a summed/overflowed darkening would violate). Checked by
+// recomputing the expected pixel independently in this test from ringDist
+// for steps limit-2..limit+2 (center = CENTERS[0] = 9, from the
+// deterministic zeroRandom) rather than a single hardcoded value.
 static void test_wave_meeting_point_not_darker_than_single_wave(void) {
     EffectContext ctx{kSolid, zeroRandom};
     const uint16_t center = 9;

@@ -102,7 +102,8 @@ void loop() {
    после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
 3. **MQTT** — `setBufferSize(512)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
    LWT `<base>/availability = "offline"` (retain). После connect: подписка `<base>/set` и `<base>/+/set`,
-   публикация `availability = "online"` и **всех** state-топиков из последнего снимка.
+   публикация `availability = "online"` и **всех** state-топиков из последнего снимка. В debug-сборке после
+   первого connect один раз логируется запас стека задачи (`uxTaskGetStackHighWaterMark`, байты из 10000).
 4. **Снимок** — `xQueueReceive(snapQueue, &snap, 0)`; при новом снимке — публикация изменившегося, но не чаще
    1 раза в 250 мс (mailbox всегда хранит последнее состояние, поэтому финальное значение гарантированно уйдёт).
    Основной `state` при этом переопубликовывается, только если изменилось поле, входящее в его JSON
@@ -595,14 +596,14 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 
 | env | Flash (v27 baseline) | Flash (v1.0.0) | RAM (v27 baseline) | RAM (v1.0.0) |
 |---|---|---|---|---|
-| `esp32-s3-zero` (прод) | 719081 B | 720013 B (+932 B, +0.13%) | 44848 B | 46656 B (+1808 B, +4.03%) |
-| `esp32-s3-zero-debug` | 720725 B | 720833 B (+108 B, +0.01%) | 44848 B | 46656 B (+1808 B, +4.03%) |
+| `esp32-s3-zero` (прод) | 719081 B | 720221 B (+1140 B, +0.16%) | 44848 B | 46664 B (+1816 B, +4.05%) |
+| `esp32-s3-zero-debug` | 720725 B | 721217 B (+492 B, +0.07%) | 44848 B | 46664 B (+1816 B, +4.05%) |
 
 Оба окружения собираются без единого `warning:`/`error:` в `firmware/src/*` и `firmware/lib/MirrorCore/*`.
 Рост RAM (статический, `.data`+`.bss`) — **не** очереди FreeRTOS (`xQueueCreate` кладёт их буфер в кучу) и
 **не** буферы `Adafruit_NeoPixel` (тоже куча, выделяются в конструкторе). Источник — новые статические
 объекты: `Topics topics` в `Network.cpp` (12 полей `char[96]` = 1152 Б) и `Frame frame_` внутри `Mirror`
-(168 × `sizeof(Rgbw)` = 672 Б); в сумме ≈ 1824 Б, что близко к измеренным +1808 Б. Укладывается в бюджет
+(168 × `sizeof(Rgbw)` = 672 Б); в сумме ≈ 1824 Б, что близко к измеренным +1816 Б. Укладывается в бюджет
 4 MB Flash / 327 KB RAM с большим запасом.
 
 ---
@@ -738,9 +739,9 @@ JSON Light (`schema: json`, `brightness_scale: 255`, `supported_color_modes: [rg
 - **Тесты:** по строке на каждую клетку таблицы 4.1; `apply_defaults_only_after_slide_off`;
   `power_on_during_slide_off_reverses`; `effect_during_slide_on_is_deferred`; `click1/2/3_*` (таблица 4.3);
   `hold_from_off_slides_then_dims`; `hold_in_night_mode_only_clears_night_mode` (баг A);
-  `dim_bounces_5_255`; `pir_level_turns_on_when_allowed`; `auto_off_after_15min_idle`;
-  `no_auto_off_when_automation_off`; `auto_effect_only_in_solid`; `snapshot_reports_running_effect_name`;
-  `frame_dirty_only_on_change`.
+  `dim_bounces_5_255`; `pir_turns_on_when_allowed`; `auto_off_after_15min_idle`;
+  `no_auto_off_when_automation_off`; `auto_effect_starts_in_solid`; `auto_effect_not_in_makeup`;
+  `snapshot_reports_running_effect`; `frame_dirty_only_on_change`.
 
 #### Task 6: `Topics`, `Protocol` (T6)
 - **Файлы:** `Topics.{h,cpp}`, `Protocol.{h,cpp}`, `test/test_protocol/`.
