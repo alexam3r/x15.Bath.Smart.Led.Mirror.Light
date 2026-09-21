@@ -2,9 +2,8 @@
 // (payload <-> Command / StateSnapshot, ARCHITECTURE.md 5.2/5.3/8.1). Runs
 // on the `native` PlatformIO environment (host, no Arduino/FreeRTOS
 // dependency). A PlatformIO test filter runs only this suite:
-// `pio test -e native -f test_protocol`.
-//
-// Grown test-first in slices; see task-6-report.md for RED/GREEN evidence.
+// `pio test -e native -f test_protocol`. Grown test-first in slices, each
+// function/rule added only after its test failed for the expected reason.
 #include <unity.h>
 
 #include <cstring>
@@ -189,6 +188,34 @@ static void test_light_clamping_and_sentinels(void) {
     TEST_ASSERT_EQUAL_INT16(1, out7.r);
 }
 
+// Regression for the LightCommand clamp contract: Mirror (Task 5) casts
+// brightness/r/g/b from int16_t to uint8_t WITHOUT clamping, so parseLight
+// must never let a non-integer JSON value slip through as if it were a
+// clamped byte -- it must be ignored (stay at the -1 sentinel) instead.
+// `is<int>()` is what rejects these; `as<int>()` alone would happily
+// truncate/convert them, silently accepting out-of-contract values.
+static void test_light_non_integer_brightness_and_color_ignored(void) {
+    LightCommand str;
+    TEST_ASSERT_TRUE(lightOf("{\"brightness\": \"128\"}", str));
+    TEST_ASSERT_EQUAL_INT16(-1, str.brightness);
+
+    LightCommand exp;
+    TEST_ASSERT_TRUE(lightOf("{\"brightness\": 1e9}", exp));
+    TEST_ASSERT_EQUAL_INT16(-1, exp.brightness);
+
+    LightCommand overflow;
+    TEST_ASSERT_TRUE(lightOf("{\"brightness\": 5000000000}", overflow));
+    TEST_ASSERT_EQUAL_INT16(-1, overflow.brightness);
+
+    LightCommand colorStr;
+    TEST_ASSERT_TRUE(lightOf("{\"color\": {\"r\": \"200\"}}", colorStr));
+    TEST_ASSERT_EQUAL_INT16(-1, colorStr.r);
+
+    LightCommand colorExp;
+    TEST_ASSERT_TRUE(lightOf("{\"color\": {\"g\": 1e9}}", colorExp));
+    TEST_ASSERT_EQUAL_INT16(-1, colorExp.g);
+}
+
 static void test_light_effect_names(void) {
     LightCommand solid;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"solid\"}", solid));
@@ -359,6 +386,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_light_partial_color_keeps_components);
     RUN_TEST(test_light_brightness_zero_is_off);
     RUN_TEST(test_light_clamping_and_sentinels);
+    RUN_TEST(test_light_non_integer_brightness_and_color_ignored);
     RUN_TEST(test_light_effect_names);
     RUN_TEST(test_light_unknown_effect_ignored);
     RUN_TEST(test_light_invalid_json_rejected);
