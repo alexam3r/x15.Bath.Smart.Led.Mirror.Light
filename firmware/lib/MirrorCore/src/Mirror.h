@@ -30,7 +30,7 @@ public:
     PowerState power() const;
 
 private:
-    // --- internal operations (task-5-context.md) ---
+    // --- internal operations ---
     void markActivity(uint32_t now);
     uint32_t rollAutoEffectDelay();
     void powerOn(uint32_t now);

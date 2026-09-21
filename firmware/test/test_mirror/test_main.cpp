@@ -1,10 +1,10 @@
-// Task 5 tests: Mirror — the single-owner state machine (ARCHITECTURE.md
+// Mirror tests: the single-owner state machine (ARCHITECTURE.md
 // section 4 / 8.1). Runs on the `native` PlatformIO environment (host, no
 // Arduino/FreeRTOS dependency). Driven with a fake clock via run(), which
 // calls tick() every 5 ms (a PlatformIO test filter runs only this suite:
 // `pio test -e native -f test_mirror`).
 //
-// Grown test-first in slices; see task-5-report.md for RED/GREEN evidence.
+// Grown test-first in slices (RED/GREEN evidence per slice).
 #include <unity.h>
 
 #include "Config.h"
@@ -20,7 +20,7 @@ void tearDown(void) {}
 static uint32_t zeroRandom(uint32_t /*bound*/) { return 0; }
 
 // Advances the fake clock `now` by `ms`, calling tick() every 5 ms — the
-// task-5-context.md test harness convention.
+// test harness convention.
 static void run(Mirror& m, uint32_t& now, uint32_t ms) {
     uint32_t end = now + ms;
     while (now < end) {
