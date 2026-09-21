@@ -106,8 +106,15 @@ void onMessage(char* topic, uint8_t* payload, unsigned int len) {
 }
 
 void task(void*) {
-    WiFi.mode(WIFI_STA);
+    // setHostname() before mode(): on Arduino-ESP32 2.0.17, setHostname()
+    // only caches the string (WiFiGeneric.cpp:901-904); the cached name is
+    // pushed to the netif inside mode() (WiFiGeneric.cpp:1265), which is a
+    // no-op if the mode isn't actually changing (early return at 1252-1254).
+    // Calling it after mode(WIFI_STA) would leave the auto-generated
+    // "esp32s3-XXXXXX" name on the netif — "SmartMirror" would be cached
+    // but never applied.
     WiFi.setHostname("SmartMirror");
+    WiFi.mode(WIFI_STA);
     topics.init(MQTT_BASE);
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(onMessage);
@@ -195,10 +202,22 @@ void task(void*) {
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 statusLed.set(0, 0, 0);
 
+                // Mailbox depth is 1 (xQueueOverwrite on Core 1), so a
+                // single non-blocking receive gets the newest snapshot if
+                // Core 1 pushed one while we were disconnected/connecting;
+                // otherwise `latest` is already current and this is a no-op.
+                // Without this, publishAll() below would publish a stale
+                // snapshot (from link-drop or boot) as retained state, and
+                // the real one would only follow ~1 loop later via
+                // publishChanged() — a visible false transition for
+                // subscribers (e.g. pir/state ON->OFF on reconnect).
+                xQueueReceive(snapQueueHandle, &latest, 0);
+
                 publishAll(latest);
+                const uint32_t connectedAt = millis();  // not `now` — mqtt.connect() and the 1 s flash both block
                 pending          = false;
-                lastPublish      = now;
-                lastStatePublish = now;
+                lastPublish      = connectedAt;
+                lastStatePublish = connectedAt;
             } else {
                 vTaskDelay(pdMS_TO_TICKS(cfg::MQTT_RETRY_DELAY_MS));
             }
