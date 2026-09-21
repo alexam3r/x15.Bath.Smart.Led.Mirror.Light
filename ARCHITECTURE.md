@@ -1,6 +1,6 @@
 # ARCHITECTURE — Smart Mirror RGBW, прошивка v1.0.0
 
-> Статус: **черновик на утверждение** (Этап 2). После утверждения — реализация по разделу 12.
+> Статус: **утверждён**, реализован в ветке `refactor/v1` (Этап 3).
 >
 > v1.0.0 — порт прошивки v27 (Gemini-эпоха) с монолитного `main.cpp` на модульную архитектуру.
 > Нумерация версий начинается заново с 1. Визуальное поведение (скорости, размеры, цвета) сохраняется,
@@ -95,7 +95,11 @@ void loop() {
 ### 3.4 Цикл Core 0 (`NetworkTask`)
 
 1. **Watchdog** — раз в 30 с суммирует downtime WiFi и MQTT; > 5 мин суммарно → `ESP.restart()` (как v27).
-2. **WiFi** — при потере: `disconnect()`/`begin()`, до 20 × 500 мс; после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
+2. **WiFi** — при старте задачи: `WiFi.setHostname("SmartMirror")` вызывается **до** `WiFi.mode(WIFI_STA)`
+   (Ruling R11) — на Arduino-ESP32 2.0.17 `setHostname()` только кладёт имя в локальный кэш, а в сетевой стек
+   его передаёт `mode()`, причём лишь когда режим действительно меняется; в обратном порядке DHCP увидел бы
+   автосгенерированное `esp32s3-XXXXXX`. При потере связи: `disconnect()`/`begin()`, до 20 × 500 мс;
+   после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
 3. **MQTT** — `setBufferSize(512)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
    LWT `<base>/availability = "offline"` (retain). После connect: подписка `<base>/set` и `<base>/+/set`,
    публикация `availability = "online"` и **всех** state-топиков из последнего снимка.
@@ -107,6 +111,18 @@ void loop() {
 
 Переполнение `cmdQueue` (8 элементов) практически невозможно (Core 1 опустошает её каждые ~5 мс);
 если `xQueueSend(..., 0)` вернул `errQUEUE_FULL` — команда отбрасывается с записью в лог.
+
+### 3.5 Известные риски
+
+**Гонка в Adafruit NeoPixel на RMT (унаследовано от v27, Ruling R12).** На ESP-IDF 4.4 (ядро Arduino-ESP32
+2.0.17) `Adafruit_NeoPixel::show()` при каждом вызове сам устанавливает и снимает RMT-драйвер и резервирует
+RMT-каналы через `rmt_reserved_channels` неатомарно (отдельные проверка и захват). `StatusLed::set()`
+(Core 0, `Network.cpp`) и `LedDriver::show()` (Core 1, каждый выведенный кадр) используют этот путь
+независимо, без общего мьютекса — при точном совпадении по времени теоретически возможен сбой кадра или
+падение. Риск идентичен v27 (там же не было общего мьютекса) и на практике проверен в эксплуатации;
+окно гонки — несколько инструкций. Смягчение (общий мьютекс `show()` или перенос статус-светодиода на
+Core 1) в v1 не делалось — вне рамок рефакторинга. Пункт 6 чек-листа ручной проверки на железе (см. README)
+покрывает это специально.
 
 ---
 
@@ -198,8 +214,12 @@ stateDiagram-v2
 Правила:
 - **Автовключение:** `pir == HIGH && power == OFF && automation && !nightMode && !cooldown.running(now) && !blackout.running(now)` → `powerOn()`.
   Срабатывание по **уровню** (как фактически работает v27), не по фронту.
-- **Активность:** `pir == HIGH && power ∈ {SLIDE_ON, ON}` → `lastActivity = lastIdle = now`.
+- **Активность:** `pir == HIGH && power ∈ {SLIDE_ON, ON}` → `lastActivity = lastIdle = now` (независимо от `automation`).
+- **`motion/set ON` также отмечает активность** (`lastActivity = lastIdle = now`) — иначе повторное включение
+  автоматики после длительного простоя тут же вызвало бы автовыключение (Ruling R9).
 - **Автовыключение:** `power == ON && automation && !nightMode && now − lastActivity ≥ 15 мин` → `powerOff(manual=false)`.
+  Условие не проверяет `effect_` — автовыключение может прервать идущий временный эффект (Ruling R10):
+  эффекты короткие (≤ 9 с), прерывание — это просто slide-out от базового цвета.
 - **Автоэффект:** `power == ON && effect_ == None && base == Solid && automation && !nightMode && now − lastIdle ≥ nextAutoEffect` → `startEffect(random)`;
   `nextAutoEffect` — случайное в [4, 5) мин, перевыбирается при каждом запуске случайного эффекта.
 - Все таймеры — через разность `now − start` (`uint32_t`), корректно переживают переполнение `millis()` (49,7 сут).
@@ -209,7 +229,7 @@ stateDiagram-v2
 | Команда | Действие |
 |---|---|
 | JSON `set` | см. 5.2, порядок применения фиксирован |
-| `motion/set ON` | `automation = true`, сбросить `cooldown` |
+| `motion/set ON` | `automation = true`, сбросить `cooldown`, отметить активность (Ruling R9) |
 | `motion/set OFF` | `automation = false` (свет не трогается) |
 | `makeup/set ON` | `base = Makeup`; если `OFF`/`SLIDE_OFF` → `powerOn()` |
 | `makeup/set OFF` | `base = Solid` |
@@ -368,7 +388,7 @@ static const EffectEntry kEffects[] = {
 ```
 
 Экземпляры статические — ни одной аллокации в куче на Core 1.
-`SlideAnimation` не входит в реестр: это анимация питания, она обратима с середины (`reverse`) и
+`SlideAnimation` не входит в реестр: это анимация питания, она обратима с середины (`reverseToOn`) и
 управляется `Mirror` напрямую.
 
 **Как добавить эффект:**
@@ -470,6 +490,7 @@ struct Countdown {
     void start(uint32_t now, uint32_t dur);
     void cancel();
     bool running(uint32_t now) const { return active && (uint32_t)(now - startMs) < durationMs; }
+    void update(uint32_t now);   // Ruling R7: retires an expired countdown (49.7-day wraparound safety)
 };
 
 // Button.h
@@ -487,6 +508,7 @@ public:
     void onPowerOn();                           // снять nightMode и cooldown
     bool canAutoOn(uint32_t now) const;
     bool automationActive() const;              // automation && !nightMode
+    void tick(uint32_t now);                    // Ruling R7: сбросить истёкшие cooldown/blackout
 };
 
 // Mirror.h
@@ -504,9 +526,22 @@ public:
     PowerState power() const;
 };
 
-// Protocol.h
+// Topics.h (Ruling R4: Route + routeTopic() live here, not in Protocol.h)
 enum class Route : uint8_t { Unknown, Light, Automation, Makeup, Effect, NightMode };
-Route  routeTopic(const char* topic, const char* base);
+
+struct Topics {
+    char set[96], setWildcard[96], state[96];
+    char automationSet[96], automationState[96];
+    char makeupSet[96], makeupState[96];
+    char effectSet[96];
+    char nightModeSet[96], nightModeState[96];
+    char pirState[96];
+    char availability[96];
+    void init(const char* base);   // snprintf каждого поля; base без завершающего /
+};
+Route routeTopic(const char* topic, const char* base);
+
+// Protocol.h (includes Topics.h)
 bool   parseSwitch(const uint8_t* payload, size_t len, bool& out);
 bool   parseLight(const uint8_t* payload, size_t len, LightCommand& out);
 bool   toCommand(Route route, const uint8_t* payload, size_t len, Command& out);
@@ -531,13 +566,24 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);   // 0 п�
 - `-DARDUINO_USB_MODE=1 -DARDUINO_USB_CDC_ON_BOOT=1`, `-DCORE_DEBUG_LEVEL=1`;
 - `build_unflags = -std=gnu++11`, `build_flags = -std=gnu++17`;
 - `monitor_speed = 115200`, `monitor_filters = esp32_exception_decoder`;
-- **все версии закреплены точно**: `platform = espressif32@<точная версия>`, `Adafruit NeoPixel`,
-  `PubSubClient 2.8`, `ArduinoJson 7.x`. Базой служит версия официальной `platformio/espressif32`, в которую
-  сейчас разрешается незакреплённый `espressif32` (на ней собиралась и проверялась v27). Точные номера
-  (платформа, ядро Arduino-ESP32, библиотеки) фиксируются в задаче T0 по результату первой успешной сборки
-  и больше не «плавают» — от версии ядра зависит RMT-драйвер и мерцание.
+- **все версии закреплены точно** (зафиксированы в T0 по результату первой успешной сборки v27, чтобы не
+  «плавали» — от версии ядра зависит RMT-драйвер и мерцание):
+  `platform = espressif32@7.1.3` (даёт `framework-arduinoespressif32` 4.20017.260907, т.е. Arduino-ESP32
+  2.0.17, и `toolchain-xtensa-esp32s3` 8.4.0), `adafruit/Adafruit NeoPixel @ 1.15.5`,
+  `knolleary/PubSubClient @ 2.8.0`, `bblanchon/ArduinoJson @ 7.4.3`.
 
-`setup()` ждёт USB-CDC до 3000 мс: `while (!Serial && millis() - t0 < 3000) {}`.
+`setup()` ждёт USB-CDC до `cfg::SERIAL_WAIT_MS` (3000 мс): `while (!Serial && millis() - t0 < SERIAL_WAIT_MS) {}`.
+
+### 9.1 Размер прошивки: v27 → v1.0.0
+
+| env | Flash (v27 baseline) | Flash (v1.0.0) | RAM (v27 baseline) | RAM (v1.0.0) |
+|---|---|---|---|---|
+| `esp32-s3-zero` (прод) | 719081 B | 720013 B (+932 B, +0.13%) | 44848 B | 46656 B (+1808 B, +4.03%) |
+| `esp32-s3-zero-debug` | 720725 B | 720833 B (+108 B, +0.01%) | 44848 B | 46656 B (+1808 B, +4.03%) |
+
+Оба окружения собираются без единого `warning:`/`error:` в `firmware/src/*` и `firmware/lib/MirrorCore/*`.
+Рост RAM — накладные расходы очередей FreeRTOS (`cmdQueue`, `snapQueue`) и отдельного объекта `StatusLed`,
+которых в v27 не было; укладывается в бюджет 4 MB Flash / 327 KB RAM с большим запасом.
 
 ---
 
@@ -545,7 +591,7 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);   // 0 п�
 
 | # | Правило | Механизм v1 | Проверка |
 |---|---|---|---|
-| 1 | `WiFi.setSleep(false)` после подключения | `Network::connectWifi()` сразу после `WL_CONNECTED` | аудит T8 (grep) |
+| 1 | `WiFi.setSleep(false)` после подключения | `network::task()` (`Network.cpp`), сразу после `WL_CONNECTED` в ветке WiFi-переподключения | аудит T8 (grep) |
 | 2 | Core 0 не трогает ленту | объекты Core 1 `static` в `main.cpp`; `Network.cpp` не включает `Mirror.h`/`LedDriver.h`; обмен только через очереди | аудит T8 (grep include-ов) |
 | 3 | USB-CDC флаги + ожидание Serial 3 с | `platformio.ini` + `setup()` | аудит T8 |
 | 4 | Только синтаксис ArduinoJson v7 | `Protocol.cpp`: `JsonDocument`, `isNull()`, `to<JsonObject>()` | grep `containsKey\|StaticJsonDocument\|DynamicJsonDocument` = 0 |
@@ -658,7 +704,7 @@ JSON Light (`schema: json`, `brightness_scale: 255`, `supported_color_modes: [rg
 - **Файлы:** `effects/Effect.h`, `SlideAnimation.{h,cpp}`, `Snake.{h,cpp}`, `Wave.{h,cpp}`,
   `EffectRegistry.{h,cpp}`, `test/test_effects/`.
 - **Consumes:** T1. **Produces:** интерфейс раздела 7, `effectInstance(EffectId)`, `effectName(EffectId)`,
-  `randomEffect(RandomFn)`, `SlideAnimation{startOn, startOff, reverse, step, radius}`.
+  `randomEffect(RandomFn)`, `SlideAnimation{startOn, startOff, reverseToOn, step, radius, turningOn}` (Ruling R3).
 - **Тесты:** `slide_on_takes_95_steps` (радиусы 0..94); `slide_off_takes_96_steps` (радиусы 95..0); `slide_reverse_keeps_radius`;
   `snake_finishes_after_229_steps`; `dark_snake_head_is_black_at_full_alpha`; `rainbow_snake_blends_with_base`;
   `wave_finishes_after_103_steps`; `wave_meeting_point_not_darker_than_single_wave` (правило №6);
