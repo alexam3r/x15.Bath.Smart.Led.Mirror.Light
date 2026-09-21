@@ -238,6 +238,17 @@ void Mirror::onPir(bool level, uint32_t now) {
 void Mirror::tick(uint32_t now) {
     gate_.tick(now);
 
+    if (gate_.automationActive() && power_ == PowerState::On) {
+        if ((uint32_t)(now - lastActivity_) > cfg::AUTO_OFF_MS) {
+            MLOG("[%lu] AUTO-OFF (idle %lu ms)\n", (unsigned long)now,
+                 (unsigned long)(now - lastActivity_));
+            powerOff(false, now);
+        } else if (effect_ == EffectId::None && base_ == BaseMode::Solid &&
+                   (uint32_t)(now - lastIdle_) > nextAutoEffectMs_) {
+            startEffect(EffectRequest::Random, now);
+        }
+    }
+
     if ((power_ == PowerState::SlideOn || power_ == PowerState::SlideOff) &&
         (uint32_t)(now - lastStepMs_) >= cfg::SLIDE_STEP_MS) {
         lastStepMs_ = now;
@@ -291,10 +302,27 @@ void Mirror::tick(uint32_t now) {
     }
 }
 
-bool Mirror::takeFrameDirty() { return false; }
+bool Mirror::takeFrameDirty() {
+    bool dirty = frameDirty_;
+    frameDirty_ = false;
+    return dirty;
+}
 
 const Frame& Mirror::frame() const { return frame_; }
 
-StateSnapshot Mirror::snapshot() const { return StateSnapshot{}; }
+StateSnapshot Mirror::snapshot() const {
+    StateSnapshot s;
+    s.on = (power_ == PowerState::SlideOn || power_ == PowerState::On);
+    s.brightness = brightness_;
+    s.r = r_;
+    s.g = g_;
+    s.b = b_;
+    s.base = base_;
+    s.effect = effect_;  // running only; pending_ is not reported
+    s.automation = gate_.automation();
+    s.nightMode = gate_.nightMode();
+    s.pir = pir_;
+    return s;
+}
 
 PowerState Mirror::power() const { return power_; }

@@ -632,6 +632,199 @@ static void test_pir_blocked_in_night_mode(void) {
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
 }
 
+// --- Slice 3: automation (tick step 2) + snapshot + frame dirty -----------
+
+// §4.4: auto-off after 15 min idle, automation && !nightMode, power == On,
+// strict >. Also isolates the 2s blackout after slide-out: auto-off is
+// manual=false, so it must NOT start the 15s manual cooldown.
+static void test_auto_off_after_15min_idle(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);  // -> On
+
+    // Tick in fine (5ms) steps until auto-off has fired AND the resulting
+    // slide-out has fully completed, capturing the exact moment (tOff)
+    // blackout starts — a single coarse run() risks overshooting past that
+    // moment, which would throw off the blackout-boundary check below.
+    uint32_t safetyLimit = now + cfg::AUTO_OFF_MS + kSlideMs + 5000;
+    while (m.power() != PowerState::Off && now < safetyLimit) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(),
+                              "auto-off never completed within the expected window");
+
+    uint32_t tOff = now;
+    now = tOff + cfg::PIR_BLACKOUT_MS - 200;
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    now = tOff + cfg::PIR_BLACKOUT_MS + 50;
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOn == m.power(),
+                              "auto-off incorrectly started a manual-off-style 15s cooldown");
+}
+
+static void test_no_auto_off_when_automation_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+    m.apply(automationCmd(false), now);
+
+    run(m, now, cfg::AUTO_OFF_MS + 1000);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+}
+
+// §4.4: auto-effect only in Solid; nextAutoEffect rerolled to AUTO_EFFECT_MIN_MS
+// by zeroRandom (bound 0 offset).
+static void test_auto_effect_starts_in_solid(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+
+    run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000);
+    TEST_ASSERT_FALSE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault),
+                               "auto-effect never started after the idle window");
+}
+
+static void test_auto_effect_not_in_makeup(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(2), now);  // Makeup, powers on
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
+
+    run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor),
+                              "auto-effect incorrectly started while in Makeup");
+}
+
+// Ruling R9: enabling automation must never cause an instant auto-off, even
+// though lastActivity_ went stale while automation was off.
+static void test_enabling_automation_does_not_auto_off_immediately(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(automationCmd(false), now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+
+    run(m, now, cfg::AUTO_OFF_MS * 2);  // go very stale while automation is off
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+
+    m.apply(automationCmd(true), now);
+    run(m, now, 100);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(),
+                              "enabling automation caused an instant auto-off");
+}
+
+// --- snapshot() -------------------------------------------------------------
+
+static void test_snapshot_reports_running_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+
+    m.onButton(click(3), now);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+
+    run(m, now, 229 * 40 + 200);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+}
+
+static void test_snapshot_hides_pending_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    m.onButton(click(3), now);  // pending_ = Dark
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+}
+
+static void test_snapshot_fields(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    StateSnapshot s0 = m.snapshot();
+    TEST_ASSERT_FALSE(s0.on);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, s0.brightness);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_R, s0.r);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_G, s0.g);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_B, s0.b);
+    TEST_ASSERT_TRUE(BaseMode::Solid == s0.base);
+    TEST_ASSERT_TRUE(s0.automation);
+    TEST_ASSERT_FALSE(s0.nightMode);
+    TEST_ASSERT_FALSE(s0.pir);
+
+    m.onPir(true, now);
+    StateSnapshot s1 = m.snapshot();
+    TEST_ASSERT_TRUE(s1.on);   // SLIDE_ON counts as "on"
+    TEST_ASSERT_TRUE(s1.pir);
+}
+
+static void test_snapshot_reflects_night_mode_and_automation(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+
+    m.apply(nightModeCmd(true), now);
+    TEST_ASSERT_TRUE(m.snapshot().nightMode);
+    m.apply(nightModeCmd(false), now);
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+
+    m.apply(automationCmd(false), now);
+    TEST_ASSERT_FALSE(m.snapshot().automation);
+    m.apply(automationCmd(true), now);
+    TEST_ASSERT_TRUE(m.snapshot().automation);
+}
+
+// --- frame dirty / brightness -----------------------------------------------
+
+static void test_frame_dirty_only_on_change(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    TEST_ASSERT_TRUE(m.takeFrameDirty());   // begin() dirties the (cleared) frame
+    TEST_ASSERT_FALSE(m.takeFrameDirty());  // consumed; nothing changed since
+
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(m.takeFrameDirty());   // slide + settle produced dirty frames
+    TEST_ASSERT_FALSE(m.takeFrameDirty());  // consumed
+
+    for (int i = 0; i < 50; ++i) {
+        now += 100;
+        m.tick(now);
+        TEST_ASSERT_FALSE_MESSAGE(m.takeFrameDirty(), "frame marked dirty with no state change");
+    }
+}
+
+static void test_frame_brightness_applied(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+
+    m.apply(lightBrightness(128), now);
+    run(m, now, 10);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, 128)));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -668,5 +861,18 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_pir_blocked_during_manual_off_cooldown);
     RUN_TEST(test_pir_blocked_when_automation_off);
     RUN_TEST(test_pir_blocked_in_night_mode);
+
+    RUN_TEST(test_auto_off_after_15min_idle);
+    RUN_TEST(test_no_auto_off_when_automation_off);
+    RUN_TEST(test_auto_effect_starts_in_solid);
+    RUN_TEST(test_auto_effect_not_in_makeup);
+    RUN_TEST(test_enabling_automation_does_not_auto_off_immediately);
+
+    RUN_TEST(test_snapshot_reports_running_effect);
+    RUN_TEST(test_snapshot_hides_pending_effect);
+    RUN_TEST(test_snapshot_fields);
+    RUN_TEST(test_snapshot_reflects_night_mode_and_automation);
+    RUN_TEST(test_frame_dirty_only_on_change);
+    RUN_TEST(test_frame_brightness_applied);
     return UNITY_END();
 }
