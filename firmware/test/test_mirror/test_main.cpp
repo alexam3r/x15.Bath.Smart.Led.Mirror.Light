@@ -242,6 +242,17 @@ static void test_click3_from_off_ignored(void) {
 
     m.onButton(click(3), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
+
+    // A mutant that started the effect anyway (ignoring the OFF guard)
+    // would only reveal itself once the mirror actually powers on and
+    // finishes sliding in -- confirm no effect is running there.
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect,
+                              "click(3) while OFF started an effect that surfaced after power-on");
+    run(m, now, 10);  // let the static fill settle
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 }
 
 static void test_click3_during_slide_off_ignored(void) {
@@ -349,8 +360,14 @@ static void test_hold_from_off_slides_then_dims(void) {
 
 // Bug A regression: hold started while in night mode must ONLY clear night
 // mode (and lock dimming for the rest of the hold) — it must never power on
-// and never dim, even though brightness starts already at DIM_MAX (so a
-// broken HoldTick could silently no-op and hide the bug).
+// and never dim. Night mode is cleared the instant HoldStart fires, so if
+// the user is already standing in front of the mirror, PIR can power it on
+// *during the same hold* (still holding, no HoldEnd yet) — holdLocked_ must
+// keep blocking dimming even once power_ reaches On. A version of this test
+// that never leaves OFF during the hold cannot tell the fix apart from a
+// missing `holdLocked_ = true;`: the `power_ == On` half of HoldTick's guard
+// already blocks dimming on its own while OFF/SLIDE_ON, so the lock is only
+// load-bearing once ON is reached mid-hold.
 static void test_hold_in_night_mode_only_clears_night_mode(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
@@ -360,21 +377,51 @@ static void test_hold_in_night_mode_only_clears_night_mode(void) {
     m.onButton(holdStart(), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
 
-    for (int i = 0; i < 20; ++i) {
+    // Night mode is now clear; PIR can auto-on while the hold is still in
+    // progress (no HoldEnd yet).
+    now += 10;
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+
+    // Keep holding through the slide-in. These HoldTicks are separately
+    // ignored by HoldTick's own `power_ == On` guard while still sliding
+    // (regardless of the lock) — checking pixel values against a "should be
+    // untouched" constant here would be invalid anyway, since the slide's
+    // edge-fade legitimately renders partial-strength colour during the
+    // animation. Just drive the clock forward until ON is reached.
+    uint32_t slideDeadline = now + kSlideMs;
+    while (m.power() != PowerState::On && now < slideDeadline) {
         now += 30;
         m.onButton(holdTick(), now);
         m.tick(now);
-        TEST_ASSERT_TRUE(PowerState::Off == m.power());
     }
-    m.onButton(holdEnd(), now);
-    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
 
-    // Night mode was cleared by the hold -> PIR can now auto-on.
-    now += 100;
-    m.onPir(true, now);
-    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
-    run(m, now, kSlideMs);
-    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, m.frame()[0].r);  // untouched by the hold
+    // This is where a missing `holdLocked_ = true` actually shows up: still
+    // holding (no HoldEnd yet), and now power_ == On, so an unlocked
+    // HoldTick's dimming branch would fire. Keep holding and confirm
+    // brightness never moves for the rest of this hold.
+    for (int i = 0; i < 10; ++i) {
+        now += 30;
+        m.onButton(holdTick(), now);
+        m.tick(now);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(cfg::DEFAULT_BRIGHTNESS, m.frame()[0].r,
+                                         "a night-mode hold dimmed after power reached ON");
+    }
+
+    m.onButton(holdEnd(), now);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, m.frame()[0].r);
+
+    // A brand-new hold (not started in night mode, power already On) must
+    // dim normally — the lock does not leak past HoldEnd.
+    m.onButton(holdStart(), now);
+    now += 30;
+    m.onButton(holdTick(), now);
+    m.tick(now);
+    now += 30;
+    m.onButton(holdTick(), now);
+    m.tick(now);
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS - cfg::DIM_STEP, m.frame()[0].r);
 }
 
 static void test_dim_bounces_5_255(void) {
@@ -506,18 +553,29 @@ static void test_random_effect_command_starts_effect(void) {
 
 // Table 4.1 "—" (no-op) cells, only reachable through Light's unconditional
 // state=1/0 handling (every other caller guards on power_ first).
+//
+// Comparing lit counts immediately before/after apply() (with no tick() in
+// between) can't tell a no-op from a reset-to-0: apply() itself never
+// renders, so the frame is untouched either way until the next tick(). This
+// version advances well into the slide, then lets *one more* real slide
+// step render after the (expected) no-op, and checks the lit count kept
+// growing from where it was rather than dropping back toward 0.
 static void test_power_on_noop_while_slide_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
     m.onButton(click(1), now);
-    run(m, now, 200);  // partial radius
+    run(m, now, 500);  // well into the slide-on (radius > 0)
     uint16_t litBefore = litPixelCount(m.frame());
+    TEST_ASSERT_TRUE_MESSAGE(litBefore > 0, "sanity: slide-on has not progressed");
 
     m.apply(lightState(1), now);  // powerOn() while SlideOn -> must no-op
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE(litBefore, litPixelCount(m.frame()),
-                                      "powerOn() while SLIDE_ON reset the radius");
+
+    run(m, now, cfg::SLIDE_STEP_MS + 5);  // let (at least) one more slide step render
+    uint16_t litAfter = litPixelCount(m.frame());
+    TEST_ASSERT_TRUE_MESSAGE(litAfter >= litBefore,
+                              "powerOn() while SLIDE_ON reset the radius to 0 (lit count dropped)");
 }
 
 static void test_power_on_noop_while_on(void) {
@@ -565,6 +623,107 @@ static void test_power_off_noop_while_slide_off(void) {
     m.onPir(true, now);
     TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOn == m.power(),
                               "powerOff() while SLIDE_OFF restarted the PIR cooldown");
+}
+
+// Table 4.1: powerOff(manual) / SLIDE_ON -> SLIDE_OFF, radius kept (continues
+// from the current radius: neither jumps to max nor to 0); manual=true still
+// starts the 15s cooldown.
+static void test_power_off_during_slide_on(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);  // -> SlideOn
+    run(m, now, 500);           // partway into the slide-on
+    uint16_t litBefore = litPixelCount(m.frame());
+    TEST_ASSERT_TRUE_MESSAGE(litBefore > 0, "sanity: slide-on has not progressed");
+
+    m.onButton(click(1), now);  // powerOff(manual) while SlideOn -> reverses direction
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+    uint32_t cooldownStart = now;
+
+    // The very next render still reflects the (unchanged) radius from the
+    // moment of the call — the internal radius_ has already advanced one
+    // step past the last *rendered* frame, so a single-step comparison
+    // against litBefore is off by one and not a reliable signal either way.
+    // Several steps out, though, the direction is unambiguous: continuing
+    // to decrease from "current" gives a strictly lower lit count than
+    // litBefore; a bug that kept turningOn_ true (radius still climbing)
+    // or reset to SLIDE_MAX_RADIUS would instead give a higher one.
+    run(m, now, cfg::SLIDE_STEP_MS * 5);
+    uint16_t litAfter = litPixelCount(m.frame());
+    TEST_ASSERT_TRUE_MESSAGE(
+        litAfter < litBefore,
+        "powerOff() while SLIDE_ON did not reverse direction from the current radius");
+
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+
+    // Manual off started the 15s cooldown at the moment powerOff() was
+    // called (not e.g. only once OFF was actually reached).
+    now = cooldownStart + cfg::PIR_COOLDOWN_MS - 100;
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    now = cooldownStart + cfg::PIR_COOLDOWN_MS + 50;
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+}
+
+// Table 4.1: powerOff(manual) / SLIDE_ON also drops any pending_ effect.
+// Checked by reversing back to SLIDE_ON *before* the slide-out ever reaches
+// OFF: applyDefaults() (which also happens to clear pending_, as part of
+// resetting everything for the next power-on) only runs on the SLIDE_OFF ->
+// OFF transition, so skipping OFF entirely isolates powerOff()'s own
+// cancellation — a version of this test that goes all the way through OFF
+// cannot tell the two apart and would pass even if powerOff() itself forgot
+// to clear pending_.
+static void test_power_off_during_slide_on_drops_pending_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);  // -> SlideOn
+    m.onButton(click(3), now);  // pending_ = Dark
+    run(m, now, 500);
+
+    m.onButton(click(1), now);  // powerOff(manual) while SlideOn
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+    run(m, now, 200);           // still well short of reaching OFF
+
+    m.onButton(click(1), now);  // powerOn (reverse) -- never reaches OFF
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect,
+                              "a pending_ effect survived powerOff() during SLIDE_ON");
+}
+
+// Table 4.1: powerOff(manual) / ON -> SLIDE_OFF, radius max; a running
+// effect is cancelled immediately (not just eventually finished).
+static void test_power_off_cancels_running_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);      // -> On
+    m.onButton(click(3), now);  // start Dark
+    run(m, now, 400);           // well into the effect
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+
+    m.onButton(click(1), now);  // powerOff(manual) -> effect must cancel immediately
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect,
+                              "powerOff() while ON did not cancel the running effect");
+
+    // Power back on while still mid-slide-out (reverse): no effect resumes.
+    run(m, now, 500);
+    m.onButton(click(1), now);  // powerOn (reverse)
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(
+        EffectId::None == m.snapshot().effect,
+        "an effect resumed after reversing a slide-out that had cancelled it");
+    run(m, now, 10);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 }
 
 static void test_automation_flag_gates_pir(void) {
@@ -642,13 +801,27 @@ static void test_auto_off_after_15min_idle(void) {
     uint32_t now = 0;
     m.begin(now);
     m.onButton(click(1), now);
-    run(m, now, kSlideMs);  // -> On
+    run(m, now, kSlideMs);  // -> On, lastActivity_ == 0 (set at click(1) time)
+
+    // Lower bound: still ON right up to (but not past) the 15-minute mark.
+    // Deliberately hardcodes the ARCHITECTURE.md §4.4 spec value (15 min)
+    // instead of referencing cfg::AUTO_OFF_MS: a bound expressed in terms of
+    // the constant itself would scale right along with a mutated/shortened
+    // AUTO_OFF_MS and could never catch that class of change — it would only
+    // ever catch a threshold-comparison bug in Mirror's own code that
+    // diverges from whatever the constant says.
+    while (now < 15UL * 60 * 1000 - 50) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(),
+                              "auto-off fired before the 15-minute idle threshold");
 
     // Tick in fine (5ms) steps until auto-off has fired AND the resulting
     // slide-out has fully completed, capturing the exact moment (tOff)
     // blackout starts — a single coarse run() risks overshooting past that
     // moment, which would throw off the blackout-boundary check below.
-    uint32_t safetyLimit = now + cfg::AUTO_OFF_MS + kSlideMs + 5000;
+    uint32_t safetyLimit = cfg::AUTO_OFF_MS + kSlideMs + 5000;
     while (m.power() != PowerState::Off && now < safetyLimit) {
         now += 5;
         m.tick(now);
@@ -664,6 +837,62 @@ static void test_auto_off_after_15min_idle(void) {
     m.onPir(true, now);
     TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOn == m.power(),
                               "auto-off incorrectly started a manual-off-style 15s cooldown");
+}
+
+// §4.4 activity rule: `pir == HIGH && power ∈ {SLIDE_ON, ON}` resets the
+// idle clock, postponing auto-off. A PIR pulse at ~10 minutes must push the
+// 15-minute deadline out to ~25 minutes, so the mirror must still be ON at
+// 20 minutes (which would already be well past a *from-start* 15-minute
+// deadline). Catches a mutant that drops the `markActivity(now)` call in
+// onPir()'s "power in {SlideOn, On}" branch.
+static void test_pir_activity_postpones_auto_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);  // -> On, lastActivity_ == 0
+
+    while (now < 10UL * 60 * 1000) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    m.onPir(true, now);  // marks activity -> lastActivity_ resets to ~10 min
+
+    while (now < 20UL * 60 * 1000) {
+        now += 5;
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(),
+                                  "PIR activity did not postpone auto-off");
+    }
+}
+
+// §4.3: "any button event resets activity timers." A HoldStart/HoldEnd pair
+// while already ON (not in night mode) has no other observable effect, so it
+// isolates the activity-marking rule the same way the PIR test isolates its
+// own. Catches a mutant that drops the `markActivity(now)` call at the top
+// of onButton().
+static void test_button_event_postpones_auto_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);  // -> On, lastActivity_ == 0
+
+    while (now < 10UL * 60 * 1000) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    m.onButton(holdStart(), now);
+    m.onButton(holdEnd(), now);
+
+    while (now < 20UL * 60 * 1000) {
+        now += 5;
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(),
+                                  "a button event did not postpone auto-off");
+    }
 }
 
 static void test_no_auto_off_when_automation_off(void) {
@@ -855,6 +1084,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_power_on_noop_while_on);
     RUN_TEST(test_power_off_noop_while_off);
     RUN_TEST(test_power_off_noop_while_slide_off);
+    RUN_TEST(test_power_off_during_slide_on);
+    RUN_TEST(test_power_off_during_slide_on_drops_pending_effect);
+    RUN_TEST(test_power_off_cancels_running_effect);
     RUN_TEST(test_automation_flag_gates_pir);
 
     RUN_TEST(test_pir_turns_on_when_allowed);
@@ -864,6 +1096,8 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     RUN_TEST(test_auto_off_after_15min_idle);
     RUN_TEST(test_no_auto_off_when_automation_off);
+    RUN_TEST(test_pir_activity_postpones_auto_off);
+    RUN_TEST(test_button_event_postpones_auto_off);
     RUN_TEST(test_auto_effect_starts_in_solid);
     RUN_TEST(test_auto_effect_not_in_makeup);
     RUN_TEST(test_enabling_automation_does_not_auto_off_immediately);
