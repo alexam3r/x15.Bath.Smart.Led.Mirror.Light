@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "Breathe.h"
+#include "Embers.h"
 #include "Snake.h"
 #include "Wave.h"
 
@@ -13,6 +14,7 @@ namespace {
 
 Breathe      s_breathe;
 DarkSnake    s_dark;
+Embers       s_embers;
 RainbowSnake s_rainbow;
 Wave         s_wave;
 
@@ -21,6 +23,7 @@ const EffectEntry kEffects[] = {
     {EffectId::Rainbow, "rainbow", &s_rainbow},
     {EffectId::Wave,    "wave",    &s_wave},
     {EffectId::Breathe, "breathe", &s_breathe},
+    {EffectId::Embers,  "embers",  &s_embers},
 };
 constexpr size_t kEffectCount = sizeof(kEffects) / sizeof(kEffects[0]);
 

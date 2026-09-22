@@ -17,10 +17,10 @@ low-latency анимации на двух ядрах, с автодетекци
 ## Возможности
 
 - **2 режима работы**: solid (RGB, тёплый оранжевый по умолчанию) и Макияж (белый канал W).
-- **4 временных эффекта** (запускаются поверх текущего режима): тёмная змейка (`dark`), радужная змейка
-  (`rainbow`), волна с затемнением (`wave`) и «дыхание» (`breathe`, v1.2.0) — всё кольцо плавно гаснет до 60 %
-  и возвращается, три раза по 4 секунды.
-- **JSON Light `effect`** — одно поле в команде `set` принимает `solid, makeup, random, dark, rainbow, wave, breathe`:
+- **5 временных эффектов** (запускаются поверх текущего режима): тёмная змейка (`dark`), радужная змейка
+  (`rainbow`), волна с затемнением (`wave`), «дыхание» (`breathe`, v1.2.0) — кольцо плавно гаснет до 60 % и
+  возвращается три раза, и «угли» (`embers`, v1.2.0) — каждый светодиод тлеет на своём уровне 40–100 %, ~20 секунд.
+- **JSON Light `effect`** — одно поле в команде `set` принимает `solid, makeup, random, dark, rainbow, wave, breathe, embers`:
   базовые режимы и запуск эффектов не требуют отдельных топиков.
 - **Аппаратная кнопка** (триггер Шмитта SN74LVC2G14): 1 клик — вкл/выкл, 2 клика — toggle Макияж, 3 клика — случайный эффект, удержание — плавное диммирование.
 - **Сброс настроек при выключении** — цвет возвращается к тёплому (255, 140, 50), яркость к 100%, режим — solid.
@@ -151,7 +151,7 @@ constexpr char     MQTT_BASE[]   = "home/flat8/bath/mirror";   // no trailing sl
 
 | Топик | Payload | Назначение |
 |---|---|---|
-| `set` | JSON: `state`, `brightness`, `color`, `effect` | Полное управление (HA JSON Light). `effect` принимает `solid, makeup, random, dark, rainbow, wave, breathe` |
+| `set` | JSON: `state`, `brightness`, `color`, `effect` | Полное управление (HA JSON Light). `effect` принимает `solid, makeup, random, dark, rainbow, wave, breathe, embers` |
 | `+/set` | wildcard | Подписка на любой из разделённых топиков |
 | `motion/set` | switch-payload (`ON`/`OFF`/`1`/`0`/`TRUE`/`FALSE`, регистр не важен) | Включить/выключить PIR-автоматику. Состояние **постоянное** — держится до следующей команды. Повторный `ON`, когда автоматика уже включена, не отменяет 15-секундную паузу PIR |
 | `motion_disable/set` | switch-payload | «Глухое» отключение PIR. НЕ в HA, для Node-RED. Снимается `OFF` или удержанием кнопки (≥0.5 с). Повторный `OFF`, когда ночной режим уже снят, ничего не меняет и не отменяет 15-секундную паузу PIR |
@@ -206,7 +206,7 @@ HA MQTT Discovery в v1.0.0 **удалён** — зеркало ничего н�
 
 | Сущность | unique_id | Топики |
 |---|---|---|
-| light «Зеркало в душевой» — JSON Light: `brightness_scale: 255`, `supported_color_modes: [rgb]`, `effect_list: solid, makeup, random, dark, rainbow, wave, breathe` | `mirror_bath_flat8` | `set` / `state` |
+| light «Зеркало в душевой» — JSON Light: `brightness_scale: 255`, `supported_color_modes: [rgb]`, `effect_list: solid, makeup, random, dark, rainbow, wave, breathe, embers` | `mirror_bath_flat8` | `set` / `state` |
 | switch «Зеркало: автодетекция движения» | `mirror_motion_switch` | `motion/set` / `motion/state` |
 | switch «Зеркало: режим Макияж» | `mirror_makeup_switch` | `makeup/set` / `makeup/state` |
 | switch «Зеркало: глитч» (v1.1.0) | `mirror_glitch_switch` | `glitch/set` / `glitch/state` |
@@ -355,7 +355,7 @@ pio run -e esp32-s3-zero -t upload
   логика, `firmware/src` — железо и сеть, две очереди FreeRTOS вместо мьютекса и `volatile`-глобалов,
   129 unit-тестов на ПК; в v1.0.1 — 130). Нумерация версий начата
   заново с 1; визуальное поведение (скорости, размеры, цвета) сохранено.
-  Намеренные изменения поведения: `effect` в JSON Light (`solid, makeup, random, dark, rainbow, wave, breathe`);
+  Намеренные изменения поведения: `effect` в JSON Light (`solid, makeup, random, dark, rainbow, wave, breathe, embers`);
   цвет из HA/Алисы переключает в `solid`; `motion/set OFF` теперь постоянный (раньше автоматика сама
   возвращалась через 15 с); `motion/state` — теперь только флаг автоматики, реальное движение — новый
   `pir/state`; LWT `availability`; удержание кнопки из `OFF` включает свет со slide-анимацией; включение

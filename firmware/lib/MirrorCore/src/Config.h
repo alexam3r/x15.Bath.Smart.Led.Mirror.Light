@@ -39,6 +39,17 @@ constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
 constexpr uint8_t  BREATHE_CYCLES      = 3;
 constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 %
 
+// --- Embers effect (v1.2.0) -------------------------------------------------
+// Each pixel smoulders at its own level in [EMBERS_MIN_LEVEL, 255]: every step
+// EMBERS_CHANGES_PER_STEP random pixels get a new target and every pixel moves
+// towards its own by at most EMBERS_SLEW. ~20 s with a 2 s fade in and out.
+constexpr uint32_t EMBERS_STEP_MS          = 60;
+constexpr uint16_t EMBERS_STEPS            = 333;  // ~20 s
+constexpr uint16_t EMBERS_FADE_STEPS       = 33;   // ~2 s
+constexpr uint8_t  EMBERS_CHANGES_PER_STEP = 13;
+constexpr uint8_t  EMBERS_MIN_LEVEL        = 102;  // 40 %
+constexpr uint8_t  EMBERS_SLEW             = 6;
+
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
 // 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.

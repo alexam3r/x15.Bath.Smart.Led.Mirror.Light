@@ -15,6 +15,7 @@
 #include "effects/Effect.h"
 #include "effects/EffectRegistry.h"
 #include "effects/Breathe.h"
+#include "effects/Embers.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
 #include "effects/Wave.h"
@@ -489,10 +490,94 @@ static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
     }
 }
 
+// --- Embers (v1.2.0): per-pixel smouldering between EMBERS_MIN_LEVEL and
+// full, ~20 s with a fade in and out. ---------------------------------------
+
+// Deterministic stand-in for esp_random: an LCG, so targets and indices vary
+// but the run is reproducible.
+static uint32_t s_lcg = 12345;
+static uint32_t lcgRandom(uint32_t bound) {
+    s_lcg = s_lcg * 1103515245u + 12345u;
+    return (s_lcg >> 16) % bound;
+}
+
+static void test_embers_finishes_after_its_steps_and_starts_on_base(void) {
+    Embers fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    TEST_ASSERT_EQUAL_UINT16(cfg::EMBERS_STEP_MS, fx.stepIntervalMs());
+    TEST_ASSERT_TRUE(fx.step(f, ctx));  // step 0: alpha 0 -> plain base
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(kSolid == f[i]);
+    int calls = 1;
+    while (fx.step(f, ctx)) {
+        ++calls;
+        TEST_ASSERT_TRUE_MESSAGE(calls < 1000, "embers did not finish");
+    }
+    TEST_ASSERT_EQUAL_INT(cfg::EMBERS_STEPS, calls + 1);
+}
+
+// zeroRandom always picks pixel 0 and the lowest target, so exactly one pixel
+// cools down to EMBERS_MIN_LEVEL and the rest stay on the plain base.
+static void test_embers_only_retargeted_pixels_change(void) {
+    Embers fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= cfg::EMBERS_FADE_STEPS; ++i) fx.step(f, ctx);  // past the fade-in
+    uint8_t prev = f[0].r;
+    for (int i = 0; i < 40; ++i) {
+        fx.step(f, ctx);
+        TEST_ASSERT_TRUE_MESSAGE(f[0].r <= prev, "pixel 0 did not cool down");
+        prev = f[0].r;
+        for (uint16_t k = 1; k < Frame::kSize; ++k) {
+            TEST_ASSERT_TRUE_MESSAGE(kSolid == f[k], "an untouched pixel left the base colour");
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cfg::EMBERS_MIN_LEVEL) == f[0], "pixel 0 did not reach 40 %");
+}
+
+// In makeup the white channel equals the raw level, so the frame shows each
+// pixel's level directly: no jumps bigger than EMBERS_SLEW, never below the floor.
+static void test_embers_moves_by_at_most_slew_and_stays_in_range(void) {
+    s_lcg = 12345;
+    Embers fx;
+    Frame f;
+    EffectContext ctx{kMakeup, lcgRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= cfg::EMBERS_FADE_STEPS; ++i) fx.step(f, ctx);  // full alpha from here
+    uint8_t prev[Frame::kSize];
+    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = f[i].w;
+    bool sawChange = false;
+    for (int step = 0; step < 200; ++step) {
+        fx.step(f, ctx);
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            const uint8_t now = f[i].w;
+            const int delta = static_cast<int>(now) - static_cast<int>(prev[i]);
+            TEST_ASSERT_TRUE_MESSAGE(delta <= cfg::EMBERS_SLEW && -delta <= cfg::EMBERS_SLEW,
+                                     "a pixel jumped by more than EMBERS_SLEW in one step");
+            TEST_ASSERT_TRUE_MESSAGE(now >= scale8(255, cfg::EMBERS_MIN_LEVEL), "pixel dropped below the floor");
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, f[i].r, "makeup base must stay on the white channel");
+            if (delta != 0) sawChange = true;
+            prev[i] = now;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(sawChange, "nothing smouldered at all");
+    // EMBERS_CHANGES_PER_STEP pixels are retargeted every step, so after a few
+    // hundred steps practically the whole ring has left full brightness. With
+    // only a handful of retargets per step most pixels would still sit at 255.
+    uint16_t below = 0;
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        if (f[i].w < 255) ++below;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(below >= Frame::kSize - 8, "too much of the ring never smouldered");
+}
+
 static void test_registry_names_roundtrip(void) {
-    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe};
-    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe"};
-    for (int i = 0; i < 4; ++i) {
+    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe,
+                            EffectId::Embers};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers"};
+    for (int i = 0; i < 5; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
         TEST_ASSERT_EQUAL_STRING(expectedNames[i], name);
@@ -520,18 +605,20 @@ static uint32_t cyclingRandom(uint32_t bound) {
 
 static void test_random_effect_covers_all(void) {
     s_cycleIdx = 0;
-    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false;
-    for (int i = 0; i < 4; ++i) {
+    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false, sawEmbers = false;
+    for (int i = 0; i < 5; ++i) {
         EffectId id = randomEffect(cyclingRandom);
         if (id == EffectId::Dark) sawDark = true;
         else if (id == EffectId::Rainbow) sawRainbow = true;
         else if (id == EffectId::Wave) sawWave = true;
         else if (id == EffectId::Breathe) sawBreathe = true;
+        else if (id == EffectId::Embers) sawEmbers = true;
     }
     TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
     TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
     TEST_ASSERT_TRUE_MESSAGE(sawWave, "randomEffect never returned Wave");
     TEST_ASSERT_TRUE_MESSAGE(sawBreathe, "randomEffect never returned Breathe");
+    TEST_ASSERT_TRUE_MESSAGE(sawEmbers, "randomEffect never returned Embers");
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -553,6 +640,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_breathe_finishes_after_three_cycles);
     RUN_TEST(test_breathe_starts_full_and_dips_at_half_cycle);
     RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
+    RUN_TEST(test_embers_finishes_after_its_steps_and_starts_on_base);
+    RUN_TEST(test_embers_only_retargeted_pixels_change);
+    RUN_TEST(test_embers_moves_by_at_most_slew_and_stays_in_range);
     RUN_TEST(test_registry_names_roundtrip);
     RUN_TEST(test_random_effect_covers_all);
     return UNITY_END();
