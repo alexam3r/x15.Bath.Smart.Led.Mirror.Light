@@ -259,6 +259,11 @@ static void test_light_effect_names(void) {
     TEST_ASSERT_TRUE(EffectRequest::Temporary == embers.effect);
     TEST_ASSERT_TRUE(EffectId::Embers == embers.effectId);
 
+    LightCommand candle;
+    TEST_ASSERT_TRUE(lightOf("{\"effect\": \"candle\"}", candle));
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == candle.effect);
+    TEST_ASSERT_TRUE(EffectId::Candle == candle.effectId);
+
     LightCommand wave;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"wave\"}", wave));
     TEST_ASSERT_TRUE(EffectRequest::Temporary == wave.effect);

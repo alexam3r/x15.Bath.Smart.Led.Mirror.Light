@@ -50,6 +50,20 @@ constexpr uint8_t  EMBERS_CHANGES_PER_STEP = 13;
 constexpr uint8_t  EMBERS_MIN_LEVEL        = 102;  // 40 %
 constexpr uint8_t  EMBERS_SLEW             = 6;
 
+// --- Candle effect (v1.2.0) -------------------------------------------------
+// The whole ring trembles like a candle flame: a new target every
+// CANDLE_RETARGET_STEPS steps, normally in [CANDLE_MIN_LEVEL, 255], with a
+// 1/CANDLE_DIP_CHANCE chance of a dip down towards CANDLE_DIP_LEVEL;
+// movement is at most CANDLE_SLEW per step.
+constexpr uint32_t CANDLE_STEP_MS        = 40;
+constexpr uint16_t CANDLE_STEPS          = 500;  // ~20 s
+constexpr uint16_t CANDLE_FADE_STEPS     = 25;   // 1 s
+constexpr uint8_t  CANDLE_MIN_LEVEL      = 227;  // 89 %
+constexpr uint8_t  CANDLE_DIP_LEVEL      = 204;  // 80 %
+constexpr uint8_t  CANDLE_DIP_CHANCE     = 20;   // 1 in 20 retargets is a dip
+constexpr uint8_t  CANDLE_SLEW           = 8;
+constexpr uint8_t  CANDLE_RETARGET_STEPS = 3;
+
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
 // 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.

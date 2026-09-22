@@ -15,6 +15,7 @@
 #include "effects/Effect.h"
 #include "effects/EffectRegistry.h"
 #include "effects/Breathe.h"
+#include "effects/Candle.h"
 #include "effects/Embers.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
@@ -573,11 +574,126 @@ static void test_embers_moves_by_at_most_slew_and_stays_in_range(void) {
     TEST_ASSERT_TRUE_MESSAGE(below >= Frame::kSize - 8, "too much of the ring never smouldered");
 }
 
+// --- Candle (v1.2.0): the whole ring trembles at 89..100 %, with rare dips
+// towards 80 %. ------------------------------------------------------------
+
+// zeroRandom makes every retarget roll a dip (rnd(CANDLE_DIP_CHANCE) == 0)
+// and take the lowest dip target, so the ring settles at CANDLE_DIP_LEVEL.
+// noDipRandom never rolls a dip, so it stays in the 89..100 % band.
+static uint32_t noDipRandom(uint32_t bound) { return bound == cfg::CANDLE_DIP_CHANCE ? 1 : 0; }
+
+static void test_candle_finishes_after_its_steps_on_base(void) {
+    Candle fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    TEST_ASSERT_EQUAL_UINT16(cfg::CANDLE_STEP_MS, fx.stepIntervalMs());
+    TEST_ASSERT_TRUE(fx.step(f, ctx));
+    TEST_ASSERT_TRUE_MESSAGE(kSolid == f[0], "step 0 must render the plain base (alpha 0)");
+    int calls = 1;
+    while (fx.step(f, ctx)) {
+        ++calls;
+        TEST_ASSERT_TRUE_MESSAGE(calls < 2000, "candle did not finish");
+    }
+    TEST_ASSERT_EQUAL_INT(cfg::CANDLE_STEPS, calls + 1);
+}
+
+static void test_candle_dips_smoothly_and_uniformly(void) {
+    Candle fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= cfg::CANDLE_FADE_STEPS; ++i) fx.step(f, ctx);  // past the fade-in
+    uint8_t prev = f[0].r;
+    for (int i = 0; i < 20; ++i) {
+        fx.step(f, ctx);
+        TEST_ASSERT_TRUE_MESSAGE(ringUniform(f), "the flame must light the whole ring evenly");
+        TEST_ASSERT_TRUE_MESSAGE(f[0].r <= prev && prev - f[0].r <= cfg::CANDLE_SLEW, "the dip is not smooth");
+        prev = f[0].r;
+    }
+    TEST_ASSERT_TRUE(scale(kSolid, cfg::CANDLE_DIP_LEVEL) == f[0]);
+}
+
+static void test_candle_without_dips_stays_above_the_band_floor(void) {
+    Candle fx;
+    Frame f;
+    EffectContext ctx{kMakeup, noDipRandom};
+    fx.begin(ctx);
+    const uint8_t floorW = scale8(255, cfg::CANDLE_MIN_LEVEL);
+    while (fx.step(f, ctx)) {
+        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= floorW, "dipped below CANDLE_MIN_LEVEL without rolling a dip");
+        TEST_ASSERT_TRUE(ringUniform(f));
+    }
+}
+
+// With varied targets the flame still moves by at most CANDLE_SLEW per step
+// and never leaves [CANDLE_DIP_LEVEL, 255].
+static void test_candle_moves_by_at_most_slew(void) {
+    s_lcg = 999;
+    Candle fx;
+    Frame f;
+    EffectContext ctx{kMakeup, lcgRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= cfg::CANDLE_FADE_STEPS; ++i) fx.step(f, ctx);
+    uint8_t prev = f[0].w;
+    bool sawChange = false;
+    for (int i = 0; i < 300; ++i) {
+        fx.step(f, ctx);
+        const int delta = static_cast<int>(f[0].w) - static_cast<int>(prev);
+        TEST_ASSERT_TRUE_MESSAGE(delta <= cfg::CANDLE_SLEW && -delta <= cfg::CANDLE_SLEW,
+                                 "the flame jumped by more than CANDLE_SLEW");
+        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= scale8(255, cfg::CANDLE_DIP_LEVEL), "dropped below the dip floor");
+        TEST_ASSERT_TRUE(ringUniform(f));
+        if (delta != 0) sawChange = true;
+        prev = f[0].w;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(sawChange, "the flame never flickered");
+}
+
+// Counts how often an effect asks for randomness, to pin the retarget cadence.
+static uint32_t s_randomCalls = 0;
+static uint32_t countingRandom(uint32_t bound) {
+    ++s_randomCalls;
+    return bound == cfg::CANDLE_DIP_CHANCE ? 1 : 0;  // never a dip
+}
+
+// The flame picks a new target every CANDLE_RETARGET_STEPS steps, not every
+// step: two rolls (dip chance + level) per retarget and none in between.
+static void test_candle_retargets_every_third_step(void) {
+    Candle fx;
+    Frame f;
+    EffectContext ctx{kSolid, countingRandom};
+    fx.begin(ctx);
+    s_randomCalls = 0;
+    const int steps = 30;
+    for (int i = 0; i < steps; ++i) fx.step(f, ctx);
+    TEST_ASSERT_EQUAL_UINT32(2 * (steps / cfg::CANDLE_RETARGET_STEPS), s_randomCalls);
+}
+
+// --- Shared effect helpers (Effect.h, v1.2.0) -------------------------------
+
+static void test_fade_alpha_ramps_in_and_out(void) {
+    TEST_ASSERT_EQUAL_UINT8(0, fadeAlpha(0, 100, 10));
+    TEST_ASSERT_EQUAL_UINT8(127, fadeAlpha(5, 100, 10));
+    TEST_ASSERT_EQUAL_UINT8(255, fadeAlpha(10, 100, 10));
+    TEST_ASSERT_EQUAL_UINT8(255, fadeAlpha(90, 100, 10));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(127, fadeAlpha(95, 100, 10), "no fade-out towards the end");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, fadeAlpha(100, 100, 10), "the last frame must be the plain base");
+}
+
+static void test_slew_towards_caps_the_step(void) {
+    TEST_ASSERT_EQUAL_UINT8(108, slewTowards(100, 200, 8));
+    TEST_ASSERT_EQUAL_UINT8(92, slewTowards(100, 50, 8));
+    TEST_ASSERT_EQUAL_UINT8(100, slewTowards(100, 100, 8));
+    TEST_ASSERT_EQUAL_UINT8(103, slewTowards(100, 103, 8));  // gap smaller than the cap
+    TEST_ASSERT_EQUAL_UINT8(98, slewTowards(100, 98, 8));
+}
+
 static void test_registry_names_roundtrip(void) {
     const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe,
-                            EffectId::Embers};
-    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers"};
-    for (int i = 0; i < 5; ++i) {
+                            EffectId::Embers, EffectId::Candle};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers", "candle"};
+    for (int i = 0; i < 6; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
         TEST_ASSERT_EQUAL_STRING(expectedNames[i], name);
@@ -605,20 +721,23 @@ static uint32_t cyclingRandom(uint32_t bound) {
 
 static void test_random_effect_covers_all(void) {
     s_cycleIdx = 0;
-    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false, sawEmbers = false;
-    for (int i = 0; i < 5; ++i) {
+    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false, sawEmbers = false,
+         sawCandle = false;
+    for (int i = 0; i < 6; ++i) {
         EffectId id = randomEffect(cyclingRandom);
         if (id == EffectId::Dark) sawDark = true;
         else if (id == EffectId::Rainbow) sawRainbow = true;
         else if (id == EffectId::Wave) sawWave = true;
         else if (id == EffectId::Breathe) sawBreathe = true;
         else if (id == EffectId::Embers) sawEmbers = true;
+        else if (id == EffectId::Candle) sawCandle = true;
     }
     TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
     TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
     TEST_ASSERT_TRUE_MESSAGE(sawWave, "randomEffect never returned Wave");
     TEST_ASSERT_TRUE_MESSAGE(sawBreathe, "randomEffect never returned Breathe");
     TEST_ASSERT_TRUE_MESSAGE(sawEmbers, "randomEffect never returned Embers");
+    TEST_ASSERT_TRUE_MESSAGE(sawCandle, "randomEffect never returned Candle");
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -643,6 +762,13 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_embers_finishes_after_its_steps_and_starts_on_base);
     RUN_TEST(test_embers_only_retargeted_pixels_change);
     RUN_TEST(test_embers_moves_by_at_most_slew_and_stays_in_range);
+    RUN_TEST(test_candle_finishes_after_its_steps_on_base);
+    RUN_TEST(test_candle_dips_smoothly_and_uniformly);
+    RUN_TEST(test_candle_without_dips_stays_above_the_band_floor);
+    RUN_TEST(test_candle_moves_by_at_most_slew);
+    RUN_TEST(test_candle_retargets_every_third_step);
+    RUN_TEST(test_fade_alpha_ramps_in_and_out);
+    RUN_TEST(test_slew_towards_caps_the_step);
     RUN_TEST(test_registry_names_roundtrip);
     RUN_TEST(test_random_effect_covers_all);
     return UNITY_END();

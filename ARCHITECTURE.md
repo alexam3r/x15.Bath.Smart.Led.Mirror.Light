@@ -199,6 +199,7 @@ stateDiagram-v2
 | `wave` | временный | тёмный пульс из случайного центра, две волны CW/CCW встречаются на `168/2`, `max(darkCW, darkCCW) × fadeOut`; 103 шага × 45 мс ≈ 4,6 с |
 | `breathe` | временный (v1.2.0) | «дыхание»: всё кольцо по косинусу гаснет до `BREATHE_MIN_LEVEL` = 153 (60 %) и обратно; 3 цикла по 200 шагов × 20 мс ≈ 12 с |
 | `embers` | временный (v1.2.0) | «угли»: у каждого светодиода свой уровень 40–100 %, каждый шаг 13 случайных получают новую цель, движение ≤ 6 за шаг; 333 шага × 60 мс ≈ 20 с, вход/выход по 2 с |
+| `candle` | временный (v1.2.0) | «свеча»: всё кольцо дрожит в полосе 89–100 %, новая цель каждые 3 шага, с вероятностью 1/20 — провал до 80–89 %, движение ≤ 8 за шаг; 500 шагов × 40 мс ≈ 20 с |
 | `random` | действие | случайный из временных эффектов реестра; в `state` отражается реально запущенный |
 
 Временные эффекты рисуются **поверх** базового режима (база передаётся в эффект каждый шаг) и после
@@ -501,7 +502,7 @@ firmware/
 │       ├── Button.{h,cpp}          # уровень → ButtonEvent
 │       ├── MotionGate.{h,cpp}      # automation / nightMode / cooldown / blackout
 │       ├── effects/
-│       │   ├── Effect.h            # интерфейс Effect, EffectContext
+│       │   ├── Effect.h            # интерфейс Effect, EffectContext, fadeAlpha/slewTowards (v1.2.0)
 │       │   ├── SlideAnimation.{h,cpp}
 │       │   ├── Snake.{h,cpp}       # DarkSnake, RainbowSnake (общая база SnakeBase)
 │       │   ├── Wave.{h,cpp}
@@ -705,7 +706,7 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 
 ### 11.1 Намеренные изменения поведения
 
-1. **`effect` в JSON Light** (вариант A): `solid, makeup, random, dark, rainbow, wave, breathe, embers`. Топики `makeup/set` и `effect/set` сохранены.
+1. **`effect` в JSON Light** (вариант A): `solid, makeup, random, dark, rainbow, wave, breathe, embers, candle`. Топики `makeup/set` и `effect/set` сохранены.
 2. **Цвет из HA/Алисы переключает в `solid`.** Раньше в Макияже цвет менялся «вслепую».
 3. **`motion/set OFF` постоянный.** В v27 автоматика сама возвращалась через 15 с (выключатель в HA «отскакивал»),
    а любое включение света включало автоматику обратно. В v1 выключатель держит состояние до `motion/set ON`.

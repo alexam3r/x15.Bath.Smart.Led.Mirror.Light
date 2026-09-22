@@ -3,28 +3,6 @@
 #include "../ColorMath.h"
 #include "../Frame.h"
 
-namespace {
-
-// Weight of the effect over the plain base for this step, 0..255: ramps up
-// over the first `fade` steps and back down over the last `fade`.
-uint8_t fadeAlpha(uint16_t step, uint16_t total, uint16_t fade) {
-    if (step < fade) return static_cast<uint8_t>(step * 255 / fade);
-    if (step > total - fade) return static_cast<uint8_t>((total - step) * 255 / fade);
-    return 255;
-}
-
-// Moves `level` towards `target` by at most EMBERS_SLEW.
-uint8_t slew(uint8_t level, uint8_t target) {
-    if (level < target) {
-        const uint8_t gap = static_cast<uint8_t>(target - level);
-        return static_cast<uint8_t>(level + (gap < cfg::EMBERS_SLEW ? gap : cfg::EMBERS_SLEW));
-    }
-    const uint8_t gap = static_cast<uint8_t>(level - target);
-    return static_cast<uint8_t>(level - (gap < cfg::EMBERS_SLEW ? gap : cfg::EMBERS_SLEW));
-}
-
-}  // namespace
-
 void Embers::begin(const EffectContext&) {
     step_ = 0;
     for (uint16_t i = 0; i < cfg::TOTAL_LEDS; ++i) level_[i] = target_[i] = 255;
@@ -41,7 +19,7 @@ bool Embers::step(Frame& out, const EffectContext& ctx) {
                                           ctx.random(255 - cfg::EMBERS_MIN_LEVEL + 1));
     }
     for (uint16_t i = 0; i < cfg::TOTAL_LEDS; ++i) {
-        level_[i] = slew(level_[i], target_[i]);
+        level_[i] = slewTowards(level_[i], target_[i], cfg::EMBERS_SLEW);
         out[i] = scale(ctx.base, lerp8(255, level_[i], alpha));
     }
     ++step_;
