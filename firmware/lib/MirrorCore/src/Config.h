@@ -32,9 +32,11 @@ constexpr uint16_t WAVE_CORE    = 3;
 constexpr uint32_t WAVE_STEP_MS = 45;
 
 // --- Slide effect -------------------------------------------------------
-constexpr uint32_t SLIDE_STEP_MS    = 28;
-constexpr uint16_t SLIDE_EDGE       = 9;
-constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 95
+// v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
+// 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.
+constexpr uint32_t SLIDE_STEP_MS    = 33;
+constexpr uint16_t SLIDE_EDGE       = 11;
+constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 97
 
 // --- Radial effect start points ------------------------------------------
 constexpr uint16_t CENTERS[4] = {9, 51, 93, 134};
@@ -79,6 +81,6 @@ constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.0.0";
+constexpr char FW_VERSION[] = "1.0.1";
 
 }  // namespace cfg

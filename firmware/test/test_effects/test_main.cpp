@@ -33,7 +33,7 @@ static uint32_t zeroRandom(uint32_t /*bound*/) { return 0; }
 
 // --- SlideAnimation (Ruling R3) ---------------------------------------------
 
-static void test_slide_on_takes_95_steps(void) {
+static void test_slide_on_takes_97_steps(void) {
     SlideAnimation slide;
     Frame f;
     slide.startOn(9);
@@ -45,7 +45,7 @@ static void test_slide_on_takes_95_steps(void) {
         ++calls;
         TEST_ASSERT_TRUE_MESSAGE(calls <= 200, "slide-on did not finish in time");
     }
-    TEST_ASSERT_EQUAL_INT(95, calls);
+    TEST_ASSERT_EQUAL_INT(97, calls);
 }
 
 // Runs a slide-on to completion (radius_ == SLIDE_MAX_RADIUS), i.e. the
@@ -55,12 +55,12 @@ static void completeSlideOn(SlideAnimation& slide, Frame& f, uint16_t center) {
     while (slide.step(f, kSolid)) {}
 }
 
-static void test_slide_off_takes_96_steps(void) {
+static void test_slide_off_takes_98_steps(void) {
     SlideAnimation slide;
     Frame f;
     completeSlideOn(slide, f, 9);
     slide.startOff();  // from ON (radius_ == SLIDE_MAX_RADIUS) -> starts at SLIDE_MAX_RADIUS
-    TEST_ASSERT_EQUAL_INT16(95, slide.radius());
+    TEST_ASSERT_EQUAL_INT16(97, slide.radius());
 
     int calls = 0;
     bool more = true;
@@ -69,7 +69,7 @@ static void test_slide_off_takes_96_steps(void) {
         ++calls;
         TEST_ASSERT_TRUE_MESSAGE(calls <= 200, "slide-off did not finish in time");
     }
-    TEST_ASSERT_EQUAL_INT(96, calls);
+    TEST_ASSERT_EQUAL_INT(98, calls);
 
     // Finished while turning off -> v27 clears the strips.
     for (uint16_t i = 0; i < Frame::kSize; ++i) {
@@ -102,7 +102,7 @@ static void test_slide_reverse_keeps_radius(void) {
 
 // Ruling R17: powering off before the slide-on rendered its first step
 // (radius_ still 0) keeps radius 0 instead of jumping to SLIDE_MAX_RADIUS —
-// otherwise the whole ring would light up and play a full ~2.7 s slide-out.
+// otherwise the whole ring would light up and play a full ~3.2 s slide-out.
 // The one remaining step renders radius 0 (dark everywhere) and finishes.
 static void test_slide_off_from_radius_0_stays_dark(void) {
     SlideAnimation slide;
@@ -122,13 +122,13 @@ static void test_slide_off_from_radius_0_stays_dark(void) {
     // startOff() restarts from SLIDE_MAX_RADIUS, as before.
     TEST_ASSERT_TRUE(slide.radius() < 0);
     slide.startOff();
-    TEST_ASSERT_EQUAL_INT16(95, slide.radius());
+    TEST_ASSERT_EQUAL_INT16(97, slide.radius());
 }
 
-// Golden frames vs v27 processAnimation() MODE_ANIM_ON/MODE_ANIM_OFF branch
-// (main.cpp lines 946-1013 @ d4421dd), computed offline for center=9. Frame
-// N below is the output of the Nth step() call (renders radius N-1 while
-// turning on).
+// Golden frames: the v27 processAnimation() MODE_ANIM_ON/MODE_ANIM_OFF formula
+// (main.cpp lines 946-1013 @ d4421dd) with the v1.0.1 soft edge SLIDE_EDGE = 11
+// (v27 used 9), computed offline for center=9. Frame N below is the output of
+// the Nth step() call (renders radius N-1 while turning on).
 static void test_slide_golden_frames(void) {
     SlideAnimation slide;
     Frame f;
@@ -140,46 +140,56 @@ static void test_slide_golden_frames(void) {
     TEST_ASSERT_TRUE(kBlack == f[9]);
     TEST_ASSERT_TRUE(kBlack == f[0]);
 
-    // Advance to call 10 -> renders radius 9.
+    // Advance to call 10 -> renders radius 9. radius < EDGE: no pixel is at
+    // full brightness yet, the centre itself is still on the fading edge.
     for (int i = 0; i < 9; ++i) slide.step(f, kSolid);
     TEST_ASSERT_EQUAL_INT16(10, slide.radius());  // already advanced past the rendered radius
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f[9]);  // dist 0 -> edgeFade 255 -> base
-    TEST_ASSERT_TRUE(rgbw(113, 62, 22, 0) == f[4]);   // dist 5 -> edgeFade 113
+    TEST_ASSERT_TRUE(rgbw(208, 114, 40, 0) == f[9]);  // dist 0 -> edgeFade 9*255/11 = 208
+    TEST_ASSERT_TRUE(rgbw(92, 50, 18, 0) == f[4]);    // dist 5 -> edgeFade 4*255/11 = 92
     TEST_ASSERT_TRUE(kBlack == f[0]);                 // dist 9 == radius -> edgeFade 0
 
     SlideAnimation slideMakeup;
     Frame fm;
     slideMakeup.startOn(9);
     for (int i = 0; i < 10; ++i) slideMakeup.step(fm, kMakeup);  // -> radius 9 rendered on 10th call
-    TEST_ASSERT_TRUE(rgbw(0, 0, 0, 113) == fm[4]);  // makeup base, dist 5 -> edgeFade 113
+    TEST_ASSERT_TRUE(rgbw(0, 0, 0, 92) == fm[4]);  // makeup base, dist 5 -> edgeFade 92
 
     // Advance a fresh slide to call 50 -> renders radius 49.
     SlideAnimation slide49;
     Frame f49;
     slide49.startOn(9);
     for (int i = 0; i < 50; ++i) slide49.step(f49, kSolid);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f49[137]);  // dist 40 == radius-EDGE -> full
-    TEST_ASSERT_TRUE(rgbw(141, 77, 27, 0) == f49[133]);   // dist 44 -> edgeFade 141
+    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f49[47]);   // dist 38 == radius-EDGE -> full
+    TEST_ASSERT_TRUE(rgbw(115, 63, 22, 0) == f49[133]);   // dist 44 -> edgeFade 5*255/11 = 115
     TEST_ASSERT_TRUE(kBlack == f49[69]);                  // dist 60 > radius -> black
 
-    // Call 95 -> renders radius 94: ring's max ringDist (84) <= radius-EDGE
-    // (85), so the whole ring is lit (v27 triggerPowerOn -> MODE_ON edge).
+    // Call 95 -> renders radius 94: the far point (dist 84) is still on the
+    // edge (84 > radius-EDGE = 83).
     SlideAnimation slide94;
     Frame f94;
     slide94.startOn(9);
     for (int i = 0; i < 95; ++i) slide94.step(f94, kSolid);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f94[0]);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f94[83]);
+    TEST_ASSERT_TRUE(rgbw(231, 126, 45, 0) == f94[93]);  // dist 84 -> edgeFade 10*255/11 = 231
+
+    // Call 97 (last) -> renders radius 96: max ringDist (84) <= radius-EDGE
+    // (85), so the whole ring is lit (-> MODE_ON edge).
+    SlideAnimation slide96;
+    Frame f96;
+    slide96.startOn(9);
+    for (int i = 0; i < 97; ++i) slide96.step(f96, kSolid);
+    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f96[0]);
+    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f96[93]);
 
     // First slide-off frame from a fresh ON (radius == SLIDE_MAX_RADIUS ==
-    // 95): max ringDist (84) <= radius-EDGE (86), whole ring lit too.
+    // 97): max ringDist (84) <= radius-EDGE (86), whole ring lit too.
     SlideAnimation slideOff;
     Frame fOff;
     completeSlideOn(slideOff, fOff, 9);
     slideOff.startOff();
-    TEST_ASSERT_EQUAL_INT16(95, slideOff.radius());
+    TEST_ASSERT_EQUAL_INT16(97, slideOff.radius());
     slideOff.step(fOff, kSolid);
     TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == fOff[0]);
+    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == fOff[93]);
 }
 
 // --- Snakes (SnakeBase + DarkSnake, RainbowSnake) ---------------------------
@@ -458,8 +468,8 @@ static void test_random_effect_covers_all(void) {
 
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
-    RUN_TEST(test_slide_on_takes_95_steps);
-    RUN_TEST(test_slide_off_takes_96_steps);
+    RUN_TEST(test_slide_on_takes_97_steps);
+    RUN_TEST(test_slide_off_takes_98_steps);
     RUN_TEST(test_slide_reverse_keeps_radius);
     RUN_TEST(test_slide_off_from_radius_0_stays_dark);
     RUN_TEST(test_slide_golden_frames);

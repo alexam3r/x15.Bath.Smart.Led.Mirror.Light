@@ -340,7 +340,7 @@ static void test_state_json_matches_5_3(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"OFF\",\"brightness\":255,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"solid\","
-        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"fw\":\"1.0.0\","
+        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"fw\":\"1.0.1\","
         "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"OFF\"}",
         buf);
 }
@@ -364,7 +364,7 @@ static void test_state_json_running_effect_and_makeup(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"ON\",\"brightness\":128,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":10,\"g\":20,\"b\":30},\"effect\":\"rainbow\","
-        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"fw\":\"1.0.0\","
+        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"fw\":\"1.0.1\","
         "\"brightness_pct\":50,\"moveDetection\":\"OFF\",\"makeup\":\"ON\"}",
         buf);
 }

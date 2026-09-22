@@ -15,7 +15,7 @@ void tearDown(void) {}
 
 static void test_config_derived_constants(void) {
     TEST_ASSERT_EQUAL_UINT16(168, cfg::TOTAL_LEDS);
-    TEST_ASSERT_EQUAL_UINT16(95, cfg::SLIDE_MAX_RADIUS);
+    TEST_ASSERT_EQUAL_UINT16(97, cfg::SLIDE_MAX_RADIUS);  // 168/2 + SLIDE_EDGE 11 + 2
 }
 
 // --- Types.h ------------------------------------------------------------

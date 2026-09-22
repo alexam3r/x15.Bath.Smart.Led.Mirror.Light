@@ -43,10 +43,12 @@ static uint16_t litPixelCount(const Frame& f) {
     return n;
 }
 
-// A full slide (either direction) takes SLIDE_MAX_RADIUS (95) steps *
-// SLIDE_STEP_MS (28ms) =~ 2660ms; 3200ms of ticking leaves comfortable
-// margin without being so long tests are slow.
-static const uint32_t kSlideMs = 3200;
+// Long enough for a full slide in either direction: at most
+// SLIDE_MAX_RADIUS + 1 steps; with the 5 ms fake-clock tick a step lands every
+// SLIDE_STEP_MS rounded up to the next 5 ms. Derived from the constants so
+// that tuning the slide does not silently break the waits below.
+static const uint32_t kSlideMs =
+    (cfg::SLIDE_MAX_RADIUS + 2) * ((cfg::SLIDE_STEP_MS + 4) / 5 * 5) + 200;
 
 // --- Slice 1: power & slide (table 4.1: powerOn Off/SlideOff rows,
 // powerOff SlideOn/On rows, "slide finished" row) --------------------------
@@ -69,6 +71,27 @@ static void test_click1_from_off_starts_slide_on(void) {
 }
 
 // Table 4.1: "slide finished" / SLIDE_ON -> ON (no pending effect).
+// v1.0.1: the power-on slide is ~20% slower than v27 (97 steps * 33 ms =
+// ~3.2 s nominal, v27: 95 * 28 ms = ~2.7 s). With the 5 ms fake-clock tick each
+// step lands 35 ms apart, so SLIDE_ON -> ON takes 97 * 35 = 3395 ms here.
+static void test_slide_on_duration_is_20_percent_longer_than_v27(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+
+    const uint32_t start = now;
+    while (m.power() != PowerState::On) {
+        now += 5;
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(now - start < 10000, "slide-on never finished");
+    }
+    const uint32_t took = now - start;
+    TEST_ASSERT_TRUE_MESSAGE(took >= 3350 && took <= 3450,
+                              "slide-on duration is not ~97 steps of 33 ms (35 ms with 5 ms ticks)");
+}
+
 static void test_slide_on_completes_to_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
@@ -516,11 +539,18 @@ static void test_night_mode_hold_never_dims(void) {
     // (regardless of the lock) — checking pixel values against a "should be
     // untouched" constant here would be invalid anyway, since the slide's
     // edge-fade legitimately renders partial-strength colour during the
-    // animation. Just drive the clock forward until ON is reached.
+    // animation. Just drive the clock forward until ON is reached: 5 ms
+    // loop ticks like the other tests, a HoldTick every 30 ms like the
+    // real Button (ticking only every 30 ms would stretch the slide
+    // whenever SLIDE_STEP_MS is not a divisor of 30).
     uint32_t slideDeadline = now + kSlideMs;
+    uint32_t lastHoldTick = now;
     while (m.power() != PowerState::On && now < slideDeadline) {
-        now += 30;
-        m.onButton(holdTick(), now);
+        now += 5;
+        if (now - lastHoldTick >= 30) {
+            lastHoldTick = now;
+            m.onButton(holdTick(), now);
+        }
         m.tick(now);
     }
     TEST_ASSERT_TRUE(PowerState::On == m.power());
@@ -1247,6 +1277,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_begins_off);
     RUN_TEST(test_click1_from_off_starts_slide_on);
     RUN_TEST(test_slide_on_completes_to_on);
+    RUN_TEST(test_slide_on_duration_is_20_percent_longer_than_v27);
     RUN_TEST(test_click1_from_on_slides_off_to_off);
     RUN_TEST(test_power_on_during_slide_off_reverses);
     RUN_TEST(test_power_off_before_first_slide_step_stays_dark);

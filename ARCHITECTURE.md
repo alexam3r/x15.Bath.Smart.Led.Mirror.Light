@@ -1,7 +1,9 @@
-# ARCHITECTURE — Smart Mirror RGBW, прошивка v1.0.0
+# ARCHITECTURE — Smart Mirror RGBW, прошивка v1.0.1
 
 > Статус: **реализован и проверен на железе.** Ветка `refactor/v1` слита в `main` 21.09.2026; 22.09.2026 прошивка
 > v1.0.0 собрана, прошита в зеркало и работает так же, как v27.
+>
+> v1.0.1 (22.09.2026): анимация включения/выключения на ~20% медленнее и с мягким краем на ~20% длиннее (§4.1).
 >
 > v1.0.0 — порт прошивки v27 (Gemini-эпоха) с монолитного `main.cpp` на модульную архитектуру.
 > Нумерация версий начинается заново с 1. Визуальное поведение (скорости, размеры, цвета) сохраняется,
@@ -90,8 +92,8 @@ void loop() {
 ```
 
 Бюджет кадра: вывод 168 LED × 32 бита × 1,25 мкс ≈ **6,7 мс** (обе ленты последовательно).
-Тик цикла ≈ 5 мс + работа. Кадры выводятся только когда изменились: slide — шаг 28 мс, змейка — 40 мс,
-волна — 45 мс (≈36/25/22 FPS, как в v27). В статике лента не перерисовывается вовсе.
+Тик цикла ≈ 5 мс + работа. Кадры выводятся только когда изменились: slide — шаг 33 мс (с v1.0.1; в v27 — 28 мс),
+змейка — 40 мс, волна — 45 мс (≈30/25/22 FPS). В статике лента не перерисовывается вовсе.
 
 ### 3.4 Цикл Core 0 (`NetworkTask`)
 
@@ -172,12 +174,13 @@ stateDiagram-v2
 - `powerOff(manual=true)` — запускает `cooldown` 15 с. `powerOff(manual=false)` (auto-off) — без cooldown.
 - `applyDefaults()` — цвет (255, 140, 50), `base = Solid`, `brightness = 255`, `effect_ = pending_ = None`.
   Вызывается **только** в момент `SLIDE_OFF → OFF`, когда лента уже погашена — смена цвета незаметна (как v27).
-- Слайд рисует базовый цвет с мягким краем `SLIDE_EDGE = 9`; `maxRadius = 168/2 + 9 + 2 = 95`,
-  шаг 28 мс → ≈ 2,7 с. Центр слайда при включении из `OFF` — случайный из `CENTERS = {9, 51, 93, 134}`.
-- Выключение до первого шага slide-in (радиус ещё 0, т.е. в пределах ≈ 28 мс после включения) продолжает
+- Слайд рисует базовый цвет с мягким краем `SLIDE_EDGE = 11`; `maxRadius = 168/2 + 11 + 2 = 97`,
+  шаг 33 мс → 97 × 33 ≈ 3,2 с. С v1.0.1 это на ~20% медленнее и с краем на ~20% длиннее, чем в v27
+  (`SLIDE_EDGE = 9`, 95 шагов × 28 мс ≈ 2,7 с). Центр слайда при включении из `OFF` — случайный из `CENTERS = {9, 51, 93, 134}`.
+- Выключение до первого шага slide-in (радиус ещё 0, т.е. в пределах ≈ 33 мс после включения) продолжает
   slide-out с радиуса 0: лента остаётся тёмной, `OFF` наступает через один шаг. С max радиуса slide-out
   стартует, только если slide-in уже завершён (`ON`) (Ruling R17; v27 в этом случае прыгал на max —
-  всё кольцо вспыхивало и гасло полным slide-out ≈ 2,7 с).
+  всё кольцо вспыхивало и гасло полным slide-out ≈ 3,2 с).
 
 `state` в телеметрии: `"ON"` для `SLIDE_ON`/`ON`, `"OFF"` для `SLIDE_OFF`/`OFF`.
 
@@ -309,7 +312,7 @@ stateDiagram-v2
   "effect": "solid",
   "automation": "ON",
   "night_mode": "OFF",
-  "fw": "1.0.0",
+  "fw": "1.0.1",
   "brightness_pct": 100,
   "moveDetection": "ON",
   "makeup": "OFF"
@@ -593,12 +596,12 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 
 `setup()` ждёт USB-CDC до `cfg::SERIAL_WAIT_MS` (3000 мс): `while (!Serial && millis() - t0 < SERIAL_WAIT_MS) {}`.
 
-### 9.1 Размер прошивки: v27 → v1.0.0
+### 9.1 Размер прошивки: v27 → v1.0.1
 
-| env | Flash (v27 baseline) | Flash (v1.0.0) | RAM (v27 baseline) | RAM (v1.0.0) |
+| env | Flash (v27 baseline) | Flash (v1.0.1) | RAM (v27 baseline) | RAM (v1.0.1) |
 |---|---|---|---|---|
-| `esp32-s3-zero` (прод) | 719081 B | 720221 B (+1140 B, +0.16%) | 44848 B | 46664 B (+1816 B, +4.05%) |
-| `esp32-s3-zero-debug` | 720725 B | 721217 B (+492 B, +0.07%) | 44848 B | 46664 B (+1816 B, +4.05%) |
+| `esp32-s3-zero` (прод) | 719081 B | 720237 B (+1156 B, +0.16%) | 44848 B | 46664 B (+1816 B, +4.05%) |
+| `esp32-s3-zero-debug` | 720725 B | 721233 B (+508 B, +0.07%) | 44848 B | 46664 B (+1816 B, +4.05%) |
 
 Оба окружения собираются без единого `warning:`/`error:` в `firmware/src/*` и `firmware/lib/MirrorCore/*`.
 Рост RAM (статический, `.data`+`.bss`) — **не** очереди FreeRTOS (`xQueueCreate` кладёт их буфер в кучу) и
@@ -644,8 +647,10 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 10. **HA MQTT Discovery удалён** — только ручной YAML (`ha_mirror.yaml`, Этап 4).
 11. **Стабильный MQTT client id** (по MAC) вместо случайного.
 12. **В `state` добавлены `effect`, `automation`, `night_mode`, `fw`.**
+13. **v1.0.1: анимация включения/выключения медленнее и мягче** — шаг 33 мс вместо 28 (≈3,2 с вместо ≈2,7 с),
+    мягкий край 11 светодиодов вместо 9 (оба параметра ~+20%, §4.1).
 
-Без изменений: пины, количество LED, кольцевое отображение, все скорости/размеры эффектов, дефолтный цвет,
+Без изменений: пины, количество LED, кольцевое отображение, скорости/размеры эффектов (кроме slide с v1.0.1), дефолтный цвет,
 сброс настроек при выключении, таймеры (15 мин / 4–5 мин / 15 с / 2 с), network watchdog, логика кликов.
 
 ### 11.2 Исправленные баги v27
@@ -731,7 +736,7 @@ binary_sensor на `pir/state`, button эффекта, диагностичес�
   `EffectRegistry.{h,cpp}`, `test/test_effects/`.
 - **Consumes:** T1. **Produces:** интерфейс раздела 7, `effectInstance(EffectId)`, `effectName(EffectId)`,
   `randomEffect(RandomFn)`, `SlideAnimation{startOn, startOff, reverseToOn, step, radius, turningOn}` (Ruling R3).
-- **Тесты:** `slide_on_takes_95_steps` (радиусы 0..94); `slide_off_takes_96_steps` (радиусы 95..0); `slide_reverse_keeps_radius`;
+- **Тесты:** `slide_on_takes_97_steps` (радиусы 0..96); `slide_off_takes_98_steps` (радиусы 97..0); `slide_reverse_keeps_radius`;
   `snake_finishes_after_229_steps`; `dark_snake_head_is_black_at_full_alpha`; `rainbow_snake_blends_with_base`;
   `wave_finishes_after_103_steps`; `wave_meeting_point_not_darker_than_single_wave` (правило №6);
   `wave_fades_back_to_base`; `registry_names_roundtrip`; `random_effect_covers_all` (детерминированный `RandomFn`).
