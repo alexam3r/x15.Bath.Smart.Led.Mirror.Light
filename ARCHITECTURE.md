@@ -249,7 +249,10 @@ stateDiagram-v2
 - **Активность:** `pir == HIGH && power ∈ {SLIDE_ON, ON}` → `lastActivity = lastIdle = now` (независимо от `automation`).
 - **`motion/set ON` также отмечает активность** (`lastActivity = lastIdle = now`) — иначе повторное включение
   автоматики после длительного простоя тут же вызвало бы автовыключение (Ruling R9).
-- **Автовыключение:** `power == ON && automation && !nightMode && now − lastActivity ≥ 15 мин` → `powerOff(manual=false)`.
+- **Автовыключение:** `power == ON && automation && !nightMode && now − lastActivity > autoOffLimit()` → `powerOff(manual=false)`.
+  Лимит зависит от базового режима (v1.2.0): `AUTO_OFF_MS` = 15 мин в solid, `AUTO_OFF_MAKEUP_MS` = **45 мин в Макияже**.
+  Смена режима (solid ↔ makeup — командой `set`, переключателем `makeup/set` или двойным кликом) считается
+  активностью и перезапускает таймер: иначе переход из Макияжа в solid на 30-й минуте погасил бы свет мгновенно.
   Условие не проверяет `effect_` — автовыключение может прервать идущий временный эффект (Ruling R10):
   эффекты короткие (≤ 9 с), прерывание — это просто slide-out от базового цвета.
 - **Автоэффект:** `power == ON && effect_ == None && base == Solid && automation && !nightMode && now − lastIdle ≥ nextAutoEffect` → `startEffect(random)`;

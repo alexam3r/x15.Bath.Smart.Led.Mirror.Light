@@ -13,8 +13,11 @@ void Mirror::markActivity(uint32_t now) {
     if (warning_) endWarning(now);
 }
 
-// How long the mirror may stay idle before it switches itself off.
-uint32_t Mirror::autoOffLimit() const { return cfg::AUTO_OFF_MS; }
+// How long the mirror may stay idle before it switches itself off: makeup
+// gets AUTO_OFF_MAKEUP_MS, everything else AUTO_OFF_MS (v1.2.0).
+uint32_t Mirror::autoOffLimit() const {
+    return base_ == BaseMode::Makeup ? cfg::AUTO_OFF_MAKEUP_MS : cfg::AUTO_OFF_MS;
+}
 
 // Leaves the warning and ramps the render back to full brightness.
 void Mirror::endWarning(uint32_t now) {
@@ -159,6 +162,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
     switch (cmd.type) {
         case CommandType::Light: {
             const LightCommand& lc = cmd.light;
+            const BaseMode prevBase = base_;
             bool changed = false;
 
             if (lc.brightness >= 1) {
@@ -180,6 +184,9 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 changed = true;
             }
             if (changed) retarget(now, true);  // a bare ON must not cut a running fade
+            // The two modes have different auto-off limits, so switching mode
+            // restarts the idle timer instead of inheriting the old one.
+            if (base_ != prevBase) markActivity(now);
 
             if (lc.brightness == 0 || lc.state == 0) {
                 powerOff(true, now);
@@ -198,7 +205,8 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             gate_.setAutomation(cmd.flag);
             if (cmd.flag) markActivity(now);  // R9: enabling automation never auto-offs instantly
             break;
-        case CommandType::Makeup:
+        case CommandType::Makeup: {
+            const BaseMode prevBase = base_;
             if (cmd.flag) {
                 base_ = BaseMode::Makeup;
                 if (power_ == PowerState::Off || power_ == PowerState::SlideOff) powerOn(now);
@@ -206,7 +214,9 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 base_ = BaseMode::Solid;
             }
             retarget(now, true);  // after a power-on from OFF this only marks the frame
+            if (base_ != prevBase) markActivity(now);  // mode change restarts the idle timer
             break;
+        }
         case CommandType::NightMode:
             if (cmd.flag) {
                 gate_.setNightMode(true);

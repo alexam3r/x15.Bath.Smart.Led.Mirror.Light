@@ -1699,6 +1699,84 @@ static void test_warning_scales_a_running_effect(void) {
     TEST_ASSERT_TRUE(scale(kSolidDefault, cfg::WARN_DIM_LEVEL) == m.frame()[100]);
 }
 
+// --- Makeup keeps the light for 45 minutes (v1.2.0) -------------------------
+// The limit follows the base mode, and a mode change counts as activity: the
+// idle time spent in makeup must not switch the light off the moment the user
+// goes back to solid. No auto-effects or glitches run in makeup, so the frame
+// checks below are stable.
+
+static void test_makeup_auto_off_after_45_minutes(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(makeupCmd(true), now);
+
+    run(m, now, cfg::AUTO_OFF_MS + 5UL * 60 * 1000);  // 20 min idle: solid would be off by now
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "makeup switched off before 45 min");
+    run(m, now, cfg::AUTO_OFF_MAKEUP_MS - (cfg::AUTO_OFF_MS + 5UL * 60 * 1000) - 60000);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());  // 44 min
+    run(m, now, 60000 + 100 + kSlideMs);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "makeup did not auto-off after 45 min");
+}
+
+static void test_makeup_warning_comes_a_minute_before_its_own_limit(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(makeupCmd(true), now);  // activity: the 45 min are counted from here
+
+    run(m, now, cfg::AUTO_OFF_MAKEUP_MS - cfg::AUTO_OFF_WARN_MS - 10);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor), "dimmed before the 44th minute");
+    run(m, now, 10 + cfg::WARN_FADE_IN_MS + 100);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kMakeupColor, cfg::WARN_DIM_LEVEL)),
+                             "no warning a minute before the makeup limit");
+}
+
+static void test_leaving_makeup_restarts_the_idle_timer(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(makeupCmd(true), now);
+    run(m, now, 30UL * 60 * 1000);  // 30 min idle in makeup
+
+    m.apply(makeupCmd(false), now);  // back to solid, whose limit is 15 min
+    run(m, now, cfg::AUTO_OFF_MS - 60000);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "mode change did not count as activity");
+    run(m, now, 60000 + 100 + kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+}
+
+// The same, through the double click (it goes through onButton, not apply).
+static void test_click2_into_makeup_extends_the_limit(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.onButton(click(2), now);  // solid -> makeup
+    run(m, now, cfg::AUTO_OFF_MS + 5UL * 60 * 1000);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+}
+
+// The JSON Light path (effect: makeup / solid) must restart the timer too —
+// it is a different branch of apply() than the makeup/set switch.
+static void test_light_effect_solid_after_long_makeup_restarts_the_timer(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(lightEffect(EffectRequest::Makeup), now);
+    run(m, now, 30UL * 60 * 1000);  // 30 min in makeup: past the solid limit
+
+    m.apply(lightEffect(EffectRequest::Solid), now);
+    run(m, now, cfg::AUTO_OFF_MS - 60000);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "JSON mode change did not count as activity");
+    run(m, now, 60000 + 100 + kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -1782,5 +1860,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_no_warning_when_automation_off);
     RUN_TEST(test_automation_off_during_warning_restores_brightness);
     RUN_TEST(test_warning_scales_a_running_effect);
+    RUN_TEST(test_makeup_auto_off_after_45_minutes);
+    RUN_TEST(test_makeup_warning_comes_a_minute_before_its_own_limit);
+    RUN_TEST(test_leaving_makeup_restarts_the_idle_timer);
+    RUN_TEST(test_click2_into_makeup_extends_the_limit);
+    RUN_TEST(test_light_effect_solid_after_long_makeup_restarts_the_timer);
     return UNITY_END();
 }

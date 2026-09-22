@@ -65,6 +65,7 @@ constexpr uint8_t DEFAULT_BRIGHTNESS = 255;
 
 // --- Timers (ms) ------------------------------------------------------------
 constexpr uint32_t AUTO_OFF_MS        = 15UL * 60 * 1000;  // 15 min
+constexpr uint32_t AUTO_OFF_MAKEUP_MS = 45UL * 60 * 1000;  // 45 min in makeup (v1.2.0)
 constexpr uint32_t AUTO_EFFECT_MIN_MS = 4UL * 60 * 1000;   // 4 min
 constexpr uint32_t AUTO_EFFECT_MAX_MS = 5UL * 60 * 1000;   // 5 min
 constexpr uint32_t PIR_COOLDOWN_MS    = 15UL * 1000;       // 15 s
