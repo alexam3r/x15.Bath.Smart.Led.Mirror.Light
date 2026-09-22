@@ -41,8 +41,8 @@ mqtt:
   light:
     # --- Зеркало: MQTT JSON Light (вкл/выкл, яркость 0..255, RGB, эффекты) ---
     # effect_list: solid/makeup — базовый режим (RGB / только белый канал W);
-    # dark/rainbow/wave — временные эффекты (4–9 с), после них state.effect снова solid/makeup;
-    # random — один из dark/rainbow/wave (в state отражается реально запущенный).
+    # dark/rainbow/wave/breathe — временные эффекты (4–12 с), после них state.effect снова solid/makeup;
+    # random — один из временных (в state отражается реально запущенный).
     - name: "Зеркало в душевой"
       unique_id: mirror_bath_flat8
       schema: json
@@ -63,6 +63,7 @@ mqtt:
         - dark
         - rainbow
         - wave
+        - breathe
       transition: false
       flash: false
       retain: false

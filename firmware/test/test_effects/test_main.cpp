@@ -14,6 +14,7 @@
 #include "Types.h"
 #include "effects/Effect.h"
 #include "effects/EffectRegistry.h"
+#include "effects/Breathe.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
 #include "effects/Wave.h"
@@ -423,10 +424,75 @@ static void test_wave_golden_frames(void) {
 
 // --- EffectRegistry ----------------------------------------------------------
 
+// --- Breathe (v1.2.0): whole ring, cosine 100 % -> 60 % -> 100 %, 3 cycles ---
+
+static bool ringUniform(const Frame& f) {
+    for (uint16_t i = 1; i < Frame::kSize; ++i) {
+        if (!(f[i] == f[0])) return false;
+    }
+    return true;
+}
+
+static void test_breathe_finishes_after_three_cycles(void) {
+    Breathe fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    TEST_ASSERT_EQUAL_UINT16(cfg::BREATHE_STEP_MS, fx.stepIntervalMs());
+    int calls = 0;
+    while (fx.step(f, ctx)) {
+        ++calls;
+        TEST_ASSERT_TRUE_MESSAGE(calls < 1000, "breathe did not finish");
+    }
+    TEST_ASSERT_EQUAL_INT(cfg::BREATHE_CYCLE_STEPS * cfg::BREATHE_CYCLES, calls + 1);
+}
+
+static void test_breathe_starts_full_and_dips_at_half_cycle(void) {
+    Breathe fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    fx.step(f, ctx);  // renders step 0
+    TEST_ASSERT_TRUE(ringUniform(f));
+    TEST_ASSERT_TRUE(kSolid == f[0]);
+    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 100
+    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cfg::BREATHE_MIN_LEVEL) == f[0], "not at 60 % halfway");
+    TEST_ASSERT_TRUE(ringUniform(f));
+    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 200
+    TEST_ASSERT_TRUE_MESSAGE(kSolid == f[0], "did not come back to full at the cycle end");
+}
+
+// Monotone down for the first half-cycle, monotone up for the second: the
+// curve must be a smooth breath, not a saw or a jump.
+static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
+    Breathe fx;
+    Frame f;
+    EffectContext ctx{kMakeup, zeroRandom};
+    fx.begin(ctx);
+    const uint8_t floorW = scale8(255, cfg::BREATHE_MIN_LEVEL);
+    fx.step(f, ctx);
+    uint8_t prev = f[0].w;
+    for (int i = 1; i <= cfg::BREATHE_CYCLE_STEPS / 2; ++i) {
+        fx.step(f, ctx);
+        TEST_ASSERT_TRUE_MESSAGE(f[0].w <= prev, "brightness rose during the first half-cycle");
+        prev = f[0].w;
+    }
+    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) {
+        fx.step(f, ctx);
+        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= prev, "brightness fell during the second half-cycle");
+        prev = f[0].w;
+    }
+    fx.begin(ctx);
+    while (fx.step(f, ctx)) {
+        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= floorW, "dipped below BREATHE_MIN_LEVEL");
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, f[0].r, "makeup base must stay on the white channel");
+    }
+}
+
 static void test_registry_names_roundtrip(void) {
-    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave};
-    const char* expectedNames[] = {"dark", "rainbow", "wave"};
-    for (int i = 0; i < 3; ++i) {
+    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe"};
+    for (int i = 0; i < 4; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
         TEST_ASSERT_EQUAL_STRING(expectedNames[i], name);
@@ -454,16 +520,18 @@ static uint32_t cyclingRandom(uint32_t bound) {
 
 static void test_random_effect_covers_all(void) {
     s_cycleIdx = 0;
-    bool sawDark = false, sawRainbow = false, sawWave = false;
-    for (int i = 0; i < 3; ++i) {
+    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false;
+    for (int i = 0; i < 4; ++i) {
         EffectId id = randomEffect(cyclingRandom);
         if (id == EffectId::Dark) sawDark = true;
         else if (id == EffectId::Rainbow) sawRainbow = true;
         else if (id == EffectId::Wave) sawWave = true;
+        else if (id == EffectId::Breathe) sawBreathe = true;
     }
     TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
     TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
     TEST_ASSERT_TRUE_MESSAGE(sawWave, "randomEffect never returned Wave");
+    TEST_ASSERT_TRUE_MESSAGE(sawBreathe, "randomEffect never returned Breathe");
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -482,6 +550,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_wave_fades_back_to_base);
     RUN_TEST(test_wave_meeting_point_not_darker_than_single_wave);
     RUN_TEST(test_wave_golden_frames);
+    RUN_TEST(test_breathe_finishes_after_three_cycles);
+    RUN_TEST(test_breathe_starts_full_and_dips_at_half_cycle);
+    RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
     RUN_TEST(test_registry_names_roundtrip);
     RUN_TEST(test_random_effect_covers_all);
     return UNITY_END();

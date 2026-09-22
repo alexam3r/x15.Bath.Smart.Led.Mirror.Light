@@ -31,6 +31,14 @@ constexpr uint16_t WAVE_RADIUS  = 18;
 constexpr uint16_t WAVE_CORE    = 3;
 constexpr uint32_t WAVE_STEP_MS = 45;
 
+// --- Breathe effect (v1.2.0) ------------------------------------------------
+// The whole ring breathes: cosine brightness 100 % -> BREATHE_MIN_LEVEL ->
+// 100 %, BREATHE_CYCLES cycles of BREATHE_CYCLE_STEPS steps each.
+constexpr uint32_t BREATHE_STEP_MS     = 20;
+constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
+constexpr uint8_t  BREATHE_CYCLES      = 3;
+constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 %
+
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
 // 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.

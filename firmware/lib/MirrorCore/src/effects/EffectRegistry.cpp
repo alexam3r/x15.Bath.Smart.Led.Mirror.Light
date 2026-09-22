@@ -5,11 +5,13 @@
 #include <cstddef>
 #include <cstring>
 
+#include "Breathe.h"
 #include "Snake.h"
 #include "Wave.h"
 
 namespace {
 
+Breathe      s_breathe;
 DarkSnake    s_dark;
 RainbowSnake s_rainbow;
 Wave         s_wave;
@@ -18,6 +20,7 @@ const EffectEntry kEffects[] = {
     {EffectId::Dark,    "dark",    &s_dark},
     {EffectId::Rainbow, "rainbow", &s_rainbow},
     {EffectId::Wave,    "wave",    &s_wave},
+    {EffectId::Breathe, "breathe", &s_breathe},
 };
 constexpr size_t kEffectCount = sizeof(kEffects) / sizeof(kEffects[0]);
 
