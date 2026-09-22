@@ -64,6 +64,13 @@ constexpr uint8_t  CANDLE_DIP_CHANCE     = 20;   // 1 in 20 retargets is a dip
 constexpr uint8_t  CANDLE_SLEW           = 8;
 constexpr uint8_t  CANDLE_RETARGET_STEPS = 3;
 
+// --- Comet effect (v1.2.0) --------------------------------------------------
+// A white head with a COMET_TAIL-pixel quadratic tail travels once around the
+// ring (TOTAL_LEDS + COMET_TAIL steps), fading in and out over COMET_FADE_STEPS.
+constexpr uint32_t COMET_STEP_MS    = 30;
+constexpr uint16_t COMET_TAIL       = 40;
+constexpr uint16_t COMET_FADE_STEPS = 20;
+
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
 // 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.

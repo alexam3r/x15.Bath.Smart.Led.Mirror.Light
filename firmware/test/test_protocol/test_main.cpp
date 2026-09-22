@@ -264,6 +264,11 @@ static void test_light_effect_names(void) {
     TEST_ASSERT_TRUE(EffectRequest::Temporary == candle.effect);
     TEST_ASSERT_TRUE(EffectId::Candle == candle.effectId);
 
+    LightCommand comet;
+    TEST_ASSERT_TRUE(lightOf("{\"effect\": \"comet\"}", comet));
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == comet.effect);
+    TEST_ASSERT_TRUE(EffectId::Comet == comet.effectId);
+
     LightCommand wave;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"wave\"}", wave));
     TEST_ASSERT_TRUE(EffectRequest::Temporary == wave.effect);

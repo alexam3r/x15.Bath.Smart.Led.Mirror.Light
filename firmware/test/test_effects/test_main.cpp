@@ -16,6 +16,7 @@
 #include "effects/EffectRegistry.h"
 #include "effects/Breathe.h"
 #include "effects/Candle.h"
+#include "effects/Comet.h"
 #include "effects/Embers.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
@@ -650,6 +651,78 @@ static void test_candle_moves_by_at_most_slew(void) {
     TEST_ASSERT_TRUE_MESSAGE(sawChange, "the flame never flickered");
 }
 
+// --- Comet (v1.2.0): a white head with a quadratic tail flies one lap -------
+
+static const Rgbw kWhite{255, 255, 255, 255};
+
+static void test_comet_finishes_after_one_lap_plus_tail(void) {
+    Comet fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};  // start at 0, direction +1
+    fx.begin(ctx);
+    TEST_ASSERT_EQUAL_UINT16(cfg::COMET_STEP_MS, fx.stepIntervalMs());
+    TEST_ASSERT_TRUE(fx.step(f, ctx));
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "step 0 must render the plain base (alpha 0)");
+    }
+    int calls = 1;
+    while (fx.step(f, ctx)) {
+        ++calls;
+        TEST_ASSERT_TRUE_MESSAGE(calls < 1000, "comet did not finish");
+    }
+    TEST_ASSERT_EQUAL_INT(cfg::TOTAL_LEDS + cfg::COMET_TAIL + 1, calls + 1);  // one lap plus the tail
+}
+
+static void test_comet_head_is_white_with_a_quadratic_tail(void) {
+    Comet fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= 100; ++i) fx.step(f, ctx);  // renders step 100: head at pixel 100, full alpha
+    TEST_ASSERT_TRUE_MESSAGE(kWhite == f[100], "the head must be white");
+    // 20 LEDs behind the head: t = 255 * (40-20)^2 / 40^2 = 63
+    TEST_ASSERT_TRUE(lerp(kSolid, kWhite, 63) == f[80]);
+    // 10 LEDs behind: t = 255 * 30^2 / 40^2 = 143 — brighter than further back
+    TEST_ASSERT_TRUE(lerp(kSolid, kWhite, 143) == f[90]);
+    TEST_ASSERT_TRUE_MESSAGE(kSolid == f[60], "the tail must end after COMET_TAIL pixels");
+    TEST_ASSERT_TRUE_MESSAGE(kSolid == f[101], "nothing may light up ahead of the head");
+}
+
+// The tail must fall off monotonically, and the whole comet must be a single
+// contiguous run behind the head (it wraps around the ring end).
+static void test_comet_tail_falls_off_monotonically_and_wraps(void) {
+    Comet fx;
+    Frame f;
+    EffectContext ctx{kSolid, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= 10; ++i) fx.step(f, ctx);  // head at 10, tail wraps past pixel 0
+    uint8_t prev = 255;
+    for (int back = 0; back < static_cast<int>(cfg::COMET_TAIL); ++back) {
+        const uint16_t idx = static_cast<uint16_t>((10 - back + cfg::TOTAL_LEDS) % cfg::TOTAL_LEDS);
+        const uint8_t v = f[idx].w;
+        TEST_ASSERT_TRUE_MESSAGE(v <= prev, "the tail got brighter further from the head");
+        prev = v;
+    }
+    // Everything further back than COMET_TAIL is plain base — the comet is one
+    // contiguous run of exactly COMET_TAIL pixels, nothing smeared elsewhere.
+    for (int back = cfg::COMET_TAIL; back < static_cast<int>(cfg::TOTAL_LEDS); ++back) {
+        const uint16_t idx = static_cast<uint16_t>((10 - back + 2 * cfg::TOTAL_LEDS) % cfg::TOTAL_LEDS);
+        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[idx], "a pixel outside the tail is not plain base");
+    }
+}
+
+static void test_comet_adds_light_in_makeup(void) {
+    Comet fx;
+    Frame f;
+    EffectContext ctx{kMakeup, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= 100; ++i) fx.step(f, ctx);
+    TEST_ASSERT_TRUE(kWhite == f[100]);
+    // RGB rises on top of the white channel instead of replacing it.
+    TEST_ASSERT_TRUE(f[90].r > 0 && f[90].w == 255);
+    TEST_ASSERT_TRUE(kMakeup == f[60]);
+}
+
 // Counts how often an effect asks for randomness, to pin the retarget cadence.
 static uint32_t s_randomCalls = 0;
 static uint32_t countingRandom(uint32_t bound) {
@@ -691,9 +764,9 @@ static void test_slew_towards_caps_the_step(void) {
 
 static void test_registry_names_roundtrip(void) {
     const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe,
-                            EffectId::Embers, EffectId::Candle};
-    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers", "candle"};
-    for (int i = 0; i < 6; ++i) {
+                            EffectId::Embers, EffectId::Candle, EffectId::Comet};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers", "candle", "comet"};
+    for (int i = 0; i < 7; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
         TEST_ASSERT_EQUAL_STRING(expectedNames[i], name);
@@ -722,8 +795,8 @@ static uint32_t cyclingRandom(uint32_t bound) {
 static void test_random_effect_covers_all(void) {
     s_cycleIdx = 0;
     bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false, sawEmbers = false,
-         sawCandle = false;
-    for (int i = 0; i < 6; ++i) {
+         sawCandle = false, sawComet = false;
+    for (int i = 0; i < 7; ++i) {
         EffectId id = randomEffect(cyclingRandom);
         if (id == EffectId::Dark) sawDark = true;
         else if (id == EffectId::Rainbow) sawRainbow = true;
@@ -731,6 +804,7 @@ static void test_random_effect_covers_all(void) {
         else if (id == EffectId::Breathe) sawBreathe = true;
         else if (id == EffectId::Embers) sawEmbers = true;
         else if (id == EffectId::Candle) sawCandle = true;
+        else if (id == EffectId::Comet) sawComet = true;
     }
     TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
     TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
@@ -738,6 +812,7 @@ static void test_random_effect_covers_all(void) {
     TEST_ASSERT_TRUE_MESSAGE(sawBreathe, "randomEffect never returned Breathe");
     TEST_ASSERT_TRUE_MESSAGE(sawEmbers, "randomEffect never returned Embers");
     TEST_ASSERT_TRUE_MESSAGE(sawCandle, "randomEffect never returned Candle");
+    TEST_ASSERT_TRUE_MESSAGE(sawComet, "randomEffect never returned Comet");
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -769,6 +844,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_candle_retargets_every_third_step);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_slew_towards_caps_the_step);
+    RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
+    RUN_TEST(test_comet_head_is_white_with_a_quadratic_tail);
+    RUN_TEST(test_comet_tail_falls_off_monotonically_and_wraps);
+    RUN_TEST(test_comet_adds_light_in_makeup);
     RUN_TEST(test_registry_names_roundtrip);
     RUN_TEST(test_random_effect_covers_all);
     return UNITY_END();
