@@ -5,10 +5,13 @@
 // `pio test -e native -f test_mirror`).
 #include <unity.h>
 
+#include <vector>
+
 #include "Config.h"
 #include "Frame.h"
 #include "Mirror.h"
 #include "Types.h"
+#include "effects/Glitch.h"
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -1272,6 +1275,218 @@ static void test_frame_brightness_applied(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, 128)));
 }
 
+// --- Glitch overlay ("neon failure", v1.1.0) --------------------------------
+//
+// zeroRandom: every interval is GLITCH_INTERVAL_MIN_MS (45 s), the segment
+// starts at pixel 0 with GLITCH_LEN_MIN (3) pixels, lasts 300 ms, and every
+// neon level pick is kGlitchLevels[0] (off) -> pixels 0..2 go black.
+
+static Command glitchCmd(bool on) {
+    Command c;
+    c.type = CommandType::Glitch;
+    c.flag = on;
+    return c;
+}
+
+// Powers on and ticks (5 ms) until SLIDE_ON -> ON; returns that moment.
+static uint32_t powerOnSettled(Mirror& m, uint32_t& now) {
+    m.onButton(click(1), now);
+    while (m.power() != PowerState::On) {
+        now += 5;
+        m.tick(now);
+    }
+    return now;
+}
+
+// Ticks (5 ms) until `until`; true if any frame differed from plain `base`.
+static bool glitchSeenUntil(Mirror& m, uint32_t& now, uint32_t until, Rgbw base) {
+    bool seen = false;
+    while (now < until) {
+        now += 5;
+        m.tick(now);
+        if (!allPixelsEqual(m.frame(), base)) seen = true;
+    }
+    return seen;
+}
+
+// Latest interval, 6-pixel segment from pixel 167 (wraps), level "off".
+static uint32_t lateRandom(uint32_t bound) {
+    if (bound == kGlitchLevelCount) return 0;
+    return bound - 1;
+}
+
+static void test_glitch_first_fires_45s_after_power_on(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    const StateSnapshot before = m.snapshot();
+
+    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MIN_MS - 5, kSolidDefault),
+                              "glitch before 45 s");
+    now = onAt + cfg::GLITCH_INTERVAL_MIN_MS;
+    m.tick(now);
+    const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
+    TEST_ASSERT_TRUE(off == m.frame()[0]);
+    TEST_ASSERT_TRUE(off == m.frame()[2]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[3]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[167]);
+    TEST_ASSERT_TRUE_MESSAGE(before == m.snapshot(), "glitch changed the reported state");
+
+    run(m, now, cfg::GLITCH_DURATION_MIN_MS + cfg::GLITCH_STEP_MS);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "base not restored after the glitch");
+}
+
+static void test_glitch_interval_upper_bound_is_90s(void) {
+    Mirror m(lateRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MAX_MS - 5, kSolidDefault));
+    now = onAt + cfg::GLITCH_INTERVAL_MAX_MS;
+    m.tick(now);
+    const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
+    TEST_ASSERT_TRUE(off == m.frame()[167]);
+    TEST_ASSERT_TRUE(off == m.frame()[4]);  // 6 pixels: 167, 0..4
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[5]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[166]);
+}
+
+static void test_glitch_never_in_makeup(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    m.apply(makeupCmd(true), now);
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kMakeupColor));
+}
+
+static void test_glitch_never_when_automation_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    m.apply(automationCmd(false), now);
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
+}
+
+static void test_glitch_switch_disables_and_reenables(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    TEST_ASSERT_TRUE(m.snapshot().glitch);  // on by default
+    const uint32_t onAt = powerOnSettled(m, now);
+
+    m.apply(glitchCmd(false), now);
+    TEST_ASSERT_FALSE(m.snapshot().glitch);
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
+
+    m.apply(glitchCmd(true), now);
+    TEST_ASSERT_TRUE(m.snapshot().glitch);
+    TEST_ASSERT_TRUE(glitchSeenUntil(m, now, now + cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
+}
+
+static void test_glitch_skipped_while_button_held(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+
+    run(m, now, cfg::GLITCH_INTERVAL_MIN_MS - 1000);
+    m.onButton(holdStart(), now);  // held across the due moment, no dimming ticks
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MIN_MS + 1000, kSolidDefault));
+    m.onButton(holdEnd(), now);
+
+    // Skipped, not deferred: the next one comes one interval later.
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MIN_MS - 5, kSolidDefault));
+    TEST_ASSERT_TRUE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MIN_MS + 5, kSolidDefault));
+}
+
+static uint32_t frameHash(const Frame& f) {
+    uint32_t h = 2166136261u;  // FNV-1a over every channel of every pixel
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        const uint8_t ch[4] = {f[i].r, f[i].g, f[i].b, f[i].w};
+        for (uint8_t c : ch) h = (h ^ c) * 16777619u;
+    }
+    return h;
+}
+
+// Powers on, starts a random effect ~1 s before the first glitch is due and
+// records a hash of every frame while it runs (effect instances are shared
+// registry singletons, so the two runs below must be sequential, not
+// interleaved).
+static void recordEffectFrames(bool glitchOn, std::vector<uint32_t>& hashes, Mirror& m, uint32_t& now) {
+    m.begin(now);
+    m.apply(glitchCmd(glitchOn), now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    run(m, now, cfg::GLITCH_INTERVAL_MIN_MS - 1000 - (now - onAt));
+    m.apply(randomEffectCmd(), now);  // dark snake, ~9 s: running at the due moment
+    const uint32_t end = now + 12000;
+    while (now < end) {
+        now += 5;
+        m.tick(now);
+        hashes.push_back(frameHash(m.frame()));
+    }
+}
+
+// A glitch due while an effect runs is skipped, not deferred, and never
+// paints over the effect: the frames are identical to a run with the glitch
+// switched off.
+static void test_glitch_skipped_during_effect(void) {
+    std::vector<uint32_t> ref, got;
+    Mirror refMirror(zeroRandom);
+    uint32_t refNow = 0;
+    recordEffectFrames(false, ref, refMirror, refNow);
+
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    recordEffectFrames(true, got, m, now);
+    TEST_ASSERT_EQUAL_UINT32(ref.size(), got.size());
+    for (size_t i = 0; i < ref.size(); ++i) {
+        TEST_ASSERT_EQUAL_UINT32_MESSAGE(ref[i], got[i], "glitch painted over a running effect");
+    }
+
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, now + 30000, kSolidDefault),
+                              "a glitch due during an effect was deferred instead of skipped");
+}
+
+static void test_glitch_cancelled_by_color_change(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    now = onAt + cfg::GLITCH_INTERVAL_MIN_MS;
+    m.tick(now);
+    TEST_ASSERT_FALSE(allPixelsEqual(m.frame(), kSolidDefault));  // glitch running
+
+    m.apply(lightColor(0, 0, 255), now);
+    const Rgbw blue{0, 0, 255, 0};
+    run(m, now, 10);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), blue));
+    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, now + cfg::GLITCH_DURATION_MAX_MS, blue),
+                              "the glitch kept running after a colour change");
+}
+
+static void test_glitch_does_not_delay_auto_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);  // activity at t=0 -> auto effect after AUTO_EFFECT_MIN_MS
+
+    bool glitched = false;
+    while (now < cfg::AUTO_EFFECT_MIN_MS - 50) {
+        now += 5;
+        m.tick(now);
+        if (m.power() == PowerState::On && !allPixelsEqual(m.frame(), kSolidDefault)) glitched = true;
+        TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(glitched, "no glitch in the first 4 minutes");
+    run(m, now, 100);
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None != m.snapshot().effect, "glitches delayed the auto effect");
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -1334,5 +1549,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_snapshot_reflects_night_mode_and_automation);
     RUN_TEST(test_frame_dirty_only_on_change);
     RUN_TEST(test_frame_brightness_applied);
+    RUN_TEST(test_glitch_first_fires_45s_after_power_on);
+    RUN_TEST(test_glitch_interval_upper_bound_is_90s);
+    RUN_TEST(test_glitch_never_in_makeup);
+    RUN_TEST(test_glitch_never_when_automation_off);
+    RUN_TEST(test_glitch_switch_disables_and_reenables);
+    RUN_TEST(test_glitch_skipped_while_button_held);
+    RUN_TEST(test_glitch_skipped_during_effect);
+    RUN_TEST(test_glitch_cancelled_by_color_change);
+    RUN_TEST(test_glitch_does_not_delay_auto_effect);
     return UNITY_END();
 }

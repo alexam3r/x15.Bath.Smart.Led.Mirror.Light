@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-enum class Route : uint8_t { Unknown, Light, Automation, Makeup, Effect, NightMode };
+enum class Route : uint8_t { Unknown, Light, Automation, Makeup, Effect, NightMode, Glitch };
 
 struct Topics {
     char set[96];
@@ -20,12 +20,14 @@ struct Topics {
     char nightModeState[96];
     char pirState[96];
     char availability[96];
+    char glitchSet[96];
+    char glitchState[96];
 
     void init(const char* base);  // snprintf each; base without trailing slash
 };
 
 // Classifies an incoming topic against `base`. Only exact `<base>/set` and
-// `<base>/<sub>/set` (sub one of motion, makeup, effect, motion_disable) are
+// `<base>/<sub>/set` (sub one of motion, makeup, effect, motion_disable, glitch) are
 // recognised; anything else (foreign base, unknown sub, outgoing */state
 // topics, prefix tricks) is Unknown.
 Route routeTopic(const char* topic, const char* base);

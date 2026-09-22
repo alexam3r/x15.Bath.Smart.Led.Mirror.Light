@@ -14,6 +14,19 @@ uint32_t Mirror::rollAutoEffectDelay() {
     return cfg::AUTO_EFFECT_MIN_MS + rnd_(cfg::AUTO_EFFECT_MAX_MS - cfg::AUTO_EFFECT_MIN_MS);
 }
 
+uint32_t Mirror::rollGlitchDelay() {
+    return cfg::GLITCH_INTERVAL_MIN_MS + rnd_(cfg::GLITCH_INTERVAL_MAX_MS - cfg::GLITCH_INTERVAL_MIN_MS);
+}
+
+// The glitch only runs over a quiet, solid, lit mirror with automation on:
+// never in makeup, during an effect/slide/pending effect or while the
+// button is held.
+bool Mirror::glitchAllowed() const {
+    return glitchEnabled_ && power_ == PowerState::On && effect_ == EffectId::None &&
+           pending_ == EffectId::None && base_ == BaseMode::Solid && gate_.automationActive() &&
+           !holding_;
+}
+
 Rgbw Mirror::baseColor() const {
     return base_ == BaseMode::Makeup ? Rgbw{0, 0, 0, 255} : Rgbw{r_, g_, b_, 0};
 }
@@ -89,6 +102,7 @@ void Mirror::applyDefaults() {
 void Mirror::begin(uint32_t now) {
     markActivity(now);
     nextAutoEffectMs_ = rollAutoEffectDelay();
+    nextGlitchMs_ = rollGlitchDelay();
     frame_.clear();
     frameDirty_ = true;
 }
@@ -156,6 +170,10 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
         case CommandType::RandomEffect:
             startRandomEffect(now);
             break;
+        case CommandType::Glitch:
+            glitchEnabled_ = cmd.flag;
+            MLOG("[%lu] GLITCH %s\n", (unsigned long)now, cmd.flag ? "ON" : "OFF");
+            break;
     }
 }
 
@@ -183,6 +201,7 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
             // clicks == 0 or >= 4: ignore.
             break;
         case ButtonEventType::HoldStart:
+            holding_ = true;
             if (gate_.nightMode()) {
                 gate_.setNightMode(false);
                 gate_.onManualOff(now);  // Ruling R14: 15 s PIR quiet — PIR must not relight it either
@@ -209,6 +228,7 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
             break;
         case ButtonEventType::HoldEnd:
             holdLocked_ = false;
+            holding_ = false;
             break;
         case ButtonEventType::None:
         default:
@@ -258,6 +278,8 @@ void Mirror::tick(uint32_t now) {
             if (wasTurningOn) {
                 power_ = PowerState::On;
                 staticDirty_ = true;
+                lastGlitch_ = now;  // first glitch one interval after the mirror is lit
+                nextGlitchMs_ = rollGlitchDelay();
                 MLOG("[%lu] SLIDE_ON -> ON\n", (unsigned long)now);
                 if (pending_ != EffectId::None) {
                     EffectId id = pending_;
@@ -291,12 +313,48 @@ void Mirror::tick(uint32_t now) {
         }
     }
 
+    tickGlitch(now);
+
     if (power_ == PowerState::On && effect_ == EffectId::None && staticDirty_) {
         frame_.fill(baseColor());
         staticDirty_ = false;
         frame_.scale(brightness_);
         frameDirty_ = true;
     }
+}
+
+// Glitch overlay (v1.1.0): due every GLITCH_INTERVAL_MIN..MAX ms while ON.
+// A due moment when the glitch is not allowed is skipped, not deferred.
+// Any change that needs a re-render (staticDirty_) or a lost precondition
+// cancels a running glitch; the static fill below then restores the base.
+void Mirror::tickGlitch(uint32_t now) {
+    if (glitch_.active()) {
+        if (!glitchAllowed() || staticDirty_) {
+            glitch_.cancel();
+            staticDirty_ = true;
+            return;
+        }
+        if ((uint32_t)(now - lastGlitchStepMs_) >= cfg::GLITCH_STEP_MS) {
+            lastGlitchStepMs_ = now;
+            glitch_.step(frame_, baseColor(), rnd_, now);  // last step renders plain base
+            frame_.scale(brightness_);
+            frameDirty_ = true;
+        }
+        return;
+    }
+
+    if (power_ != PowerState::On || (uint32_t)(now - lastGlitch_) < nextGlitchMs_) return;
+    lastGlitch_ = now;
+    nextGlitchMs_ = rollGlitchDelay();
+    if (!glitchAllowed() || staticDirty_) return;
+
+    glitch_.start(rnd_, now);
+    lastGlitchStepMs_ = now;
+    glitch_.step(frame_, baseColor(), rnd_, now);
+    frame_.scale(brightness_);
+    frameDirty_ = true;
+    MLOG("[%lu] GLITCH at %u x%u for %lu ms\n", (unsigned long)now, (unsigned)glitch_.first(),
+         (unsigned)glitch_.length(), (unsigned long)glitch_.durationMs());
 }
 
 bool Mirror::takeFrameDirty() {
@@ -319,6 +377,7 @@ StateSnapshot Mirror::snapshot() const {
     s.automation = gate_.automation();
     s.nightMode = gate_.nightMode();
     s.pir = pir_;
+    s.glitch = glitchEnabled_;
     return s;
 }
 

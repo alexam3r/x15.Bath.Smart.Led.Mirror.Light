@@ -17,6 +17,8 @@ void Topics::init(const char* base) {
     std::snprintf(nightModeState, sizeof(nightModeState), "%s/motion_disable/state", base);
     std::snprintf(pirState, sizeof(pirState), "%s/pir/state", base);
     std::snprintf(availability, sizeof(availability), "%s/availability", base);
+    std::snprintf(glitchSet, sizeof(glitchSet), "%s/glitch/set", base);
+    std::snprintf(glitchState, sizeof(glitchState), "%s/glitch/state", base);
 }
 
 Route routeTopic(const char* topic, const char* base) {
@@ -40,6 +42,7 @@ Route routeTopic(const char* topic, const char* base) {
     if (subLen == 6 && std::strncmp(rest, "makeup", subLen) == 0) return Route::Makeup;
     if (subLen == 6 && std::strncmp(rest, "effect", subLen) == 0) return Route::Effect;
     if (subLen == 14 && std::strncmp(rest, "motion_disable", subLen) == 0) return Route::NightMode;
+    if (subLen == 6 && std::strncmp(rest, "glitch", subLen) == 0) return Route::Glitch;
 
     return Route::Unknown;
 }

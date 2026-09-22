@@ -105,6 +105,9 @@ bool toCommand(Route route, const uint8_t* payload, size_t len, Command& out) {
         case Route::NightMode:
             out.type = CommandType::NightMode;
             return parseSwitch(payload, len, out.flag);
+        case Route::Glitch:
+            out.type = CommandType::Glitch;
+            return parseSwitch(payload, len, out.flag);
         case Route::Effect:
             out.type = CommandType::RandomEffect;
             return true;  // any payload, even empty
@@ -130,6 +133,7 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap) {
 
     doc["automation"] = s.automation ? "ON" : "OFF";
     doc["night_mode"] = s.nightMode ? "ON" : "OFF";
+    doc["glitch"] = s.glitch ? "ON" : "OFF";
     doc["fw"] = cfg::FW_VERSION;
     doc["brightness_pct"] = static_cast<int>(s.brightness) * 100 / 255;
     doc["moveDetection"] = s.automation ? "ON" : "OFF";  // legacy, == automation

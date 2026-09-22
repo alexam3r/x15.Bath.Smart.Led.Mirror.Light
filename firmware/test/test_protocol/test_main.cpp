@@ -36,6 +36,8 @@ static void test_topics_built_from_base(void) {
     TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/motion_disable/state", t.nightModeState);
     TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/pir/state", t.pirState);
     TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/availability", t.availability);
+    TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/glitch/set", t.glitchSet);
+    TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/glitch/state", t.glitchState);
 }
 
 // --- routeTopic (Ruling R4) -------------------------------------------------
@@ -46,6 +48,8 @@ static void test_route_all_topics(void) {
     TEST_ASSERT_TRUE(Route::Makeup == routeTopic("home/flat8/bath/mirror/makeup/set", kBase));
     TEST_ASSERT_TRUE(Route::Effect == routeTopic("home/flat8/bath/mirror/effect/set", kBase));
     TEST_ASSERT_TRUE(Route::NightMode == routeTopic("home/flat8/bath/mirror/motion_disable/set", kBase));
+    TEST_ASSERT_TRUE(Route::Glitch == routeTopic("home/flat8/bath/mirror/glitch/set", kBase));
+    TEST_ASSERT_TRUE(Route::Unknown == routeTopic("home/flat8/bath/mirror/glitch/state", kBase));
 }
 
 static void test_route_rejects_foreign_base(void) {
@@ -301,6 +305,12 @@ static void test_to_command_automation_makeup_nightmode(void) {
     TEST_ASSERT_TRUE(okN);
     TEST_ASSERT_TRUE(CommandType::NightMode == n.type);
     TEST_ASSERT_TRUE(n.flag);
+
+    Command g;
+    bool okG = toCommand(Route::Glitch, reinterpret_cast<const uint8_t*>("OFF"), 3, g);
+    TEST_ASSERT_TRUE(okG);
+    TEST_ASSERT_TRUE(CommandType::Glitch == g.type);
+    TEST_ASSERT_FALSE(g.flag);
 }
 
 static void test_to_command_switch_invalid_rejected(void) {
@@ -340,7 +350,7 @@ static void test_state_json_matches_5_3(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"OFF\",\"brightness\":255,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"solid\","
-        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"fw\":\"1.0.1\","
+        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.1.0\","
         "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"OFF\"}",
         buf);
 }
@@ -358,13 +368,14 @@ static void test_state_json_running_effect_and_makeup(void) {
     s.effect = EffectId::Rainbow;
     s.automation = false;
     s.nightMode = true;
+    s.glitch = false;
     char buf[cfg::STATE_JSON_CAP];
     size_t n = buildStateJson(s, buf, sizeof(buf));
     TEST_ASSERT_TRUE(n > 0);
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"ON\",\"brightness\":128,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":10,\"g\":20,\"b\":30},\"effect\":\"rainbow\","
-        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"fw\":\"1.0.1\","
+        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.1.0\","
         "\"brightness_pct\":50,\"moveDetection\":\"OFF\",\"makeup\":\"ON\"}",
         buf);
 }
@@ -417,6 +428,7 @@ static void test_state_json_differs_ignores_pir_only(void) {
     c = a; c.effect = EffectId::Wave;       TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.automation = !a.automation;    TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.nightMode = !a.nightMode;      TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.glitch = !a.glitch;            TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
 
     // A real change plus a PIR change still counts.
     c = a; c.brightness = 17; c.pir = !a.pir;

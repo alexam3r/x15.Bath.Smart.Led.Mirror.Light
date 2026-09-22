@@ -46,6 +46,7 @@ bool lastAutomation = false;
 bool lastMakeup     = false;
 bool lastNightMode  = false;
 bool lastPir        = false;
+bool lastGlitch     = false;
 
 // Publishes only `<base>/state` (retain). blink=true — only the 10 s
 // heartbeat (Ruling R16) — wraps it in the v27 dim-green 50 ms status-LED
@@ -68,7 +69,7 @@ void publishState(const StateSnapshot& s, bool blink) {
     }
 }
 
-// force=true (publishAll): all four sidecars, unconditionally (bug C fix).
+// force=true (publishAll): all sidecars, unconditionally (bug C fix).
 // force=false (publishChanged): only sidecars whose value changed.
 void publishSidecars(const StateSnapshot& s, bool force) {
     const bool makeup = (s.base == BaseMode::Makeup);
@@ -88,6 +89,10 @@ void publishSidecars(const StateSnapshot& s, bool force) {
     if (force || s.pir != lastPir) {
         mqtt.publish(topics.pirState, s.pir ? "ON" : "OFF", true);
         lastPir = s.pir;
+    }
+    if (force || s.glitch != lastGlitch) {
+        mqtt.publish(topics.glitchState, s.glitch ? "ON" : "OFF", true);
+        lastGlitch = s.glitch;
     }
 }
 

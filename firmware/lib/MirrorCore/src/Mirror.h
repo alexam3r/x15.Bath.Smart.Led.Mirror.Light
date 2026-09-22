@@ -12,6 +12,7 @@
 #include "MotionGate.h"
 #include "Types.h"
 #include "effects/Effect.h"
+#include "effects/Glitch.h"
 #include "effects/SlideAnimation.h"
 
 class Mirror {
@@ -33,6 +34,9 @@ private:
     // --- internal operations ---
     void markActivity(uint32_t now);
     uint32_t rollAutoEffectDelay();
+    uint32_t rollGlitchDelay();
+    bool glitchAllowed() const;
+    void tickGlitch(uint32_t now);
     void powerOn(uint32_t now);
     void powerOff(bool manual, uint32_t now);
     void startEffect(EffectId id, uint32_t now);
@@ -54,6 +58,7 @@ private:
     uint8_t brightness_ = cfg::DEFAULT_BRIGHTNESS;
     int16_t dimDir_ = static_cast<int16_t>(cfg::DIM_STEP);  // v27 initial +5
     bool    holdLocked_ = false;
+    bool    holding_    = false;  // between HoldStart and HoldEnd
 
     uint32_t lastActivity_     = 0;
     uint32_t lastIdle_         = 0;
@@ -62,6 +67,11 @@ private:
 
     SlideAnimation slide_;
     MotionGate     gate_;
+    GlitchOverlay  glitch_;
+    bool           glitchEnabled_    = true;
+    uint32_t       lastGlitch_       = 0;
+    uint32_t       nextGlitchMs_     = 0;
+    uint32_t       lastGlitchStepMs_ = 0;
     bool           pir_ = false;
 
     Frame frame_;

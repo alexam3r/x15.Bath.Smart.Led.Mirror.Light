@@ -13,7 +13,7 @@ enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave };  // temporary
 // `Temporary` + LightCommand::effectId, so adding an effect never touches
 // this enum.
 enum class EffectRequest : uint8_t { None, Solid, Makeup, Random, Temporary };
-enum class CommandType   : uint8_t { Light, Automation, Makeup, NightMode, RandomEffect };
+enum class CommandType   : uint8_t { Light, Automation, Makeup, NightMode, RandomEffect, Glitch };
 
 // Precondition for consumers (Mirror): every present value is already
 // clamped to 0..255 by Protocol (parseLight), and -1 means "field absent" —
@@ -31,7 +31,7 @@ static_assert(std::is_trivially_copyable<LightCommand>::value,
 struct Command {
     CommandType  type = CommandType::Light;
     LightCommand light;         // for Light
-    bool         flag = false;  // for Automation / Makeup / NightMode
+    bool         flag = false;  // for Automation / Makeup / NightMode / Glitch
 };
 static_assert(std::is_trivially_copyable<Command>::value,
               "Command crosses cmdQueue by memcpy");
@@ -45,6 +45,7 @@ struct StateSnapshot {
     bool     automation = true;
     bool     nightMode = false;
     bool     pir = false;
+    bool     glitch = true;  // glitch overlay enabled (v1.1.0)
 };
 static_assert(std::is_trivially_copyable<StateSnapshot>::value,
               "StateSnapshot crosses snapQueue by memcpy");
@@ -57,5 +58,6 @@ inline bool operator==(const StateSnapshot& a, const StateSnapshot& b) {
            a.effect == b.effect &&
            a.automation == b.automation &&
            a.nightMode == b.nightMode &&
-           a.pir == b.pir;
+           a.pir == b.pir &&
+           a.glitch == b.glitch;
 }
