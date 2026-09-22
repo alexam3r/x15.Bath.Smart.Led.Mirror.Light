@@ -1620,6 +1620,85 @@ static void test_click2_during_slide_off_shows_makeup(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 }
 
+// --- Pre-auto-off warning (v1.2.0): a minute before auto-off the rendered
+// brightness fades to 50 %; any activity restores it and restarts the timer.
+// The glitch is switched off in these tests so a random overlay cannot make
+// the frame non-uniform at the moment it is sampled. ------------------------
+
+static void test_warning_dims_to_half_one_minute_before_auto_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);  // activity at the click (t = 0)
+    m.apply(glitchCmd(false), now);
+
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS - 10 - now);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "dimmed too early");
+    run(m, now, 10 + cfg::WARN_FADE_IN_MS + 100);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)),
+                             "not dimmed to 50 % two seconds into the warning");
+    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, m.snapshot().brightness);  // HA setting untouched
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+}
+
+static void test_activity_during_warning_restores_and_postpones(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(glitchCmd(false), now);
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + 5000 - now);
+    TEST_ASSERT_FALSE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "warning did not start");
+
+    m.onPir(true, now);
+    m.onPir(false, now);
+    run(m, now, cfg::WARN_FADE_OUT_MS + 100);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "brightness not restored after activity");
+
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS - 5000);  // past the old auto-off moment
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "auto-off timer was not restarted");
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
+}
+
+static void test_no_warning_when_automation_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(automationCmd(false), now);
+    run(m, now, cfg::AUTO_OFF_MS + 60000);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
+}
+
+// Switching automation off mid-warning must not leave the light at 50 % for good.
+static void test_automation_off_during_warning_restores_brightness(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(glitchCmd(false), now);
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)));
+
+    m.apply(automationCmd(false), now);
+    run(m, now, cfg::WARN_FADE_OUT_MS + 100);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "still dimmed after automation was switched off");
+}
+
+static void test_warning_scales_a_running_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(glitchCmd(false), now);
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 500 - now);
+    m.apply(randomEffectCmd(), now);  // zeroRandom: dark snake, head at 0 moving +1
+    run(m, now, cfg::SNAKE_STEP_MS + 5);
+    // Pixel 100 is far behind the head for the first steps -> plain base, dimmed.
+    TEST_ASSERT_TRUE(scale(kSolidDefault, cfg::WARN_DIM_LEVEL) == m.frame()[100]);
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -1698,5 +1777,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_hold_dimming_stays_immediate);
     RUN_TEST(test_power_on_from_off_uses_new_colour_at_once);
     RUN_TEST(test_click2_during_slide_off_shows_makeup);
+    RUN_TEST(test_warning_dims_to_half_one_minute_before_auto_off);
+    RUN_TEST(test_activity_during_warning_restores_and_postpones);
+    RUN_TEST(test_no_warning_when_automation_off);
+    RUN_TEST(test_automation_off_during_warning_restores_brightness);
+    RUN_TEST(test_warning_scales_a_running_effect);
     return UNITY_END();
 }

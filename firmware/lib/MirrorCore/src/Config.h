@@ -70,6 +70,15 @@ constexpr uint32_t AUTO_EFFECT_MAX_MS = 5UL * 60 * 1000;   // 5 min
 constexpr uint32_t PIR_COOLDOWN_MS    = 15UL * 1000;       // 15 s
 constexpr uint32_t PIR_BLACKOUT_MS    = 2UL * 1000;        // 2 s
 
+// --- Pre-auto-off warning (v1.2.0) ------------------------------------------
+// AUTO_OFF_WARN_MS before auto-off the rendered brightness ramps down to
+// WARN_DIM_LEVEL over WARN_FADE_IN_MS; any activity ramps it back over
+// WARN_FADE_OUT_MS and restarts the auto-off timer.
+constexpr uint32_t AUTO_OFF_WARN_MS = 60UL * 1000;  // 1 min
+constexpr uint8_t  WARN_DIM_LEVEL   = 128;          // 50 %
+constexpr uint32_t WARN_FADE_IN_MS  = 2000;
+constexpr uint32_t WARN_FADE_OUT_MS = 1000;
+
 // --- Transitions (v1.2.0) ---------------------------------------------------
 // Colour/brightness/mode changes from commands and the double click fade
 // linearly; button dimming is applied at once (it is already stepped every

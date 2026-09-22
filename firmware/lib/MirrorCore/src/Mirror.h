@@ -34,6 +34,8 @@ public:
 private:
     // --- internal operations ---
     void markActivity(uint32_t now);
+    uint32_t autoOffLimit() const;
+    void endWarning(uint32_t now);
     uint32_t rollAutoEffectDelay();
     uint32_t rollGlitchDelay();
     bool glitchAllowed() const;
@@ -72,6 +74,13 @@ private:
     uint8_t  fromBrightness_  = cfg::DEFAULT_BRIGHTNESS;
     Ramp     trans_;
     uint32_t lastTransStepMs_ = 0;
+
+    // Pre-auto-off warning (v1.2.0): inside the last AUTO_OFF_WARN_MS before
+    // auto-off the whole render is scaled by warnLevel_ (255 = no warning).
+    bool     warning_        = false;
+    Ramp     warn_;
+    uint8_t  warnLevel_      = 255;
+    uint32_t lastWarnStepMs_ = 0;
 
     uint32_t lastActivity_     = 0;
     uint32_t lastIdle_         = 0;

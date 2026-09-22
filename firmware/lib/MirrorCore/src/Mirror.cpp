@@ -8,7 +8,20 @@
 
 Mirror::Mirror(RandomFn rnd) : rnd_(rnd) {}
 
-void Mirror::markActivity(uint32_t now) { lastActivity_ = lastIdle_ = now; }
+void Mirror::markActivity(uint32_t now) {
+    lastActivity_ = lastIdle_ = now;
+    if (warning_) endWarning(now);
+}
+
+// How long the mirror may stay idle before it switches itself off.
+uint32_t Mirror::autoOffLimit() const { return cfg::AUTO_OFF_MS; }
+
+// Leaves the warning and ramps the render back to full brightness.
+void Mirror::endWarning(uint32_t now) {
+    warning_ = false;
+    warn_.start(warn_.value(now), 255, now, cfg::WARN_FADE_OUT_MS);
+    lastWarnStepMs_ = now;
+}
 
 uint32_t Mirror::rollAutoEffectDelay() {
     return cfg::AUTO_EFFECT_MIN_MS + rnd_(cfg::AUTO_EFFECT_MAX_MS - cfg::AUTO_EFFECT_MIN_MS);
@@ -55,7 +68,7 @@ void Mirror::retarget(uint32_t now, bool smooth) {
 
 // Every render ends here: brightness applied to the whole frame, frame flagged.
 void Mirror::finishFrame() {
-    frame_.scale(shownBrightness_);
+    frame_.scale(scale8(shownBrightness_, warnLevel_));
     frameDirty_ = true;
 }
 
@@ -129,6 +142,9 @@ void Mirror::applyDefaults() {
     shownColor_ = targetColor();
     shownBrightness_ = brightness_;
     trans_.set(255);
+    warning_ = false;
+    warn_.set(255);
+    warnLevel_ = 255;
 }
 
 void Mirror::begin(uint32_t now) {
@@ -298,14 +314,31 @@ void Mirror::tick(uint32_t now) {
     }
 
     if (gate_.automationActive() && power_ == PowerState::On) {
-        if ((uint32_t)(now - lastActivity_) > cfg::AUTO_OFF_MS) {
-            MLOG("[%lu] AUTO-OFF (idle %lu ms)\n", (unsigned long)now,
-                 (unsigned long)(now - lastActivity_));
+        const uint32_t idle = (uint32_t)(now - lastActivity_);
+        const uint32_t limit = autoOffLimit();
+        if (idle > limit) {
+            MLOG("[%lu] AUTO-OFF (idle %lu ms)\n", (unsigned long)now, (unsigned long)idle);
             powerOff(false, now);
-        } else if (effect_ == EffectId::None && base_ == BaseMode::Solid &&
-                   (uint32_t)(now - lastIdle_) > nextAutoEffectMs_) {
-            startRandomEffect(now);
+        } else {
+            if (!warning_ && idle > limit - cfg::AUTO_OFF_WARN_MS) {
+                warning_ = true;
+                warn_.start(warnLevel_, cfg::WARN_DIM_LEVEL, now, cfg::WARN_FADE_IN_MS);
+                lastWarnStepMs_ = now;
+                MLOG("[%lu] AUTO-OFF WARNING (dim to 50%%)\n", (unsigned long)now);
+            }
+            if (effect_ == EffectId::None && base_ == BaseMode::Solid &&
+                (uint32_t)(now - lastIdle_) > nextAutoEffectMs_) {
+                startRandomEffect(now);
+            }
         }
+    } else if (warning_ && (power_ == PowerState::On || power_ == PowerState::SlideOn)) {
+        endWarning(now);  // automation switched off mid-warning: back to full brightness
+    }
+
+    if (warn_.active && (uint32_t)(now - lastWarnStepMs_) >= cfg::TRANSITION_STEP_MS) {
+        lastWarnStepMs_ = now;
+        warnLevel_ = warn_.value(now);  // retires itself at the end, exactly on 128 / 255
+        staticDirty_ = true;
     }
 
     if ((power_ == PowerState::SlideOn || power_ == PowerState::SlideOff) &&
