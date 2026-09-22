@@ -8,6 +8,14 @@ Rgbw scale(Rgbw c, uint8_t k) {
     return Rgbw{scale8(c.r, k), scale8(c.g, k), scale8(c.b, k), scale8(c.w, k)};
 }
 
+uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t) {
+    return static_cast<uint8_t>(a + (static_cast<int32_t>(b) - a) * t / 255);
+}
+
+Rgbw lerp(Rgbw a, Rgbw b, uint8_t t) {
+    return Rgbw{lerp8(a.r, b.r, t), lerp8(a.g, b.g, t), lerp8(a.b, b.b, t), lerp8(a.w, b.w, t)};
+}
+
 Rgbw hsv(uint16_t hue) {
     // Bit-exact port of Adafruit_NeoPixel::ColorHSV(hue, sat, val) with
     // sat = 255, val = 255 hardcoded (the only path MirrorCore needs).

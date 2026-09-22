@@ -203,6 +203,20 @@ stateDiagram-v2
 завершения возвращают зеркало в статическую заливку. В `state.effect` отдаётся имя идущего временного
 эффекта, иначе — имя базового режима.
 
+**Переходы (v1.2.0).** `r,g,b`, `base` и `brightness` — это *цели*: их отдаёт `state`, и меняются они сразу.
+На экране — *показанные* значения (`shownColor_`, `shownBrightness_`), которые догоняют цель:
+
+- изменение цвета, яркости или режима командой (`set`, `makeup/set`) или двойным кликом при горящем
+  зеркале — линейный переход за `TRANSITION_MS` = 500 мс шагом `TRANSITION_STEP_MS` = 20 мс (примитив `Ramp`,
+  `lerp`/`lerp8`); новая команда посреди перехода начинает новый переход от текущего показанного цвета;
+- диммирование удержанием кнопки — сразу (оно и так ступенчатое, шаг 30 мс);
+- включение из `OFF`/`SLIDE_OFF` — новые значения сразу, slide-in играет уже в них (иначе двойной клик во
+  время slide-out показал бы старый solid);
+- при выключенном зеркале — сразу; `applyDefaults()` сбрасывает и показанные значения.
+
+Эффекты, slide и глитч берут цвет через `baseColor()` = показанный цвет и видят переход; каждый кадр
+заканчивается `finishFrame()` — умножением на показанную яркость.
+
 ### 4.3 Кнопка
 
 `Button` превращает сырой уровень в события. Аппаратный антидребезг — программного нет (как v27).
@@ -468,9 +482,10 @@ firmware/
 │       ├── Config.h                # пины, размеры, тайминги, CENTERS, FW_VERSION — всё constexpr
 │       ├── Log.h                   # MLOG(...) → Serial.printf только при ARDUINO && DEBUG_LOG_ENABLED
 │       ├── Types.h                 # PowerState, BaseMode, EffectId, EffectRequest, Command, StateSnapshot
-│       ├── ColorMath.{h,cpp}       # Rgbw, scale8, scale(Rgbw,k), hsv(hue), packColor
+│       ├── ColorMath.{h,cpp}       # Rgbw, scale8, scale(Rgbw,k), lerp8, lerp(Rgbw,Rgbw,t), hsv(hue), packColor
 │       ├── Frame.{h,cpp}           # Frame[168], ringDist, mapVirtual
 │       ├── Countdown.h             # таймер на разности uint32_t (переживает переполнение millis)
+│       ├── Ramp.h                  # линейная интерполяция uint8_t по времени (переходы, v1.2.0)
 │       ├── Button.{h,cpp}          # уровень → ButtonEvent
 │       ├── MotionGate.{h,cpp}      # automation / nightMode / cooldown / blackout
 │       ├── effects/
@@ -496,6 +511,7 @@ firmware/
     ├── test_motion/
     ├── test_effects/
     ├── test_glitch/
+    ├── test_ramp/
     ├── test_mirror/
     └── test_protocol/
 ```
@@ -551,6 +567,15 @@ struct Countdown {
     void cancel();
     bool running(uint32_t now) const { return active && (uint32_t)(now - startMs) < durationMs; }
     void update(uint32_t now);   // Ruling R7: retires an expired countdown (49.7-day wraparound safety)
+};
+
+// Ramp.h (v1.2.0) — uint8_t from → to over durMs; value() retires the ramp at the end (like R7)
+struct Ramp {
+    uint8_t from = 0, to = 0; uint32_t startMs = 0, durMs = 0; bool active = false;
+    void start(uint8_t f, uint8_t t, uint32_t now, uint32_t dur);   // dur 0 or f == t → inactive at t
+    void set(uint8_t v);
+    uint8_t value(uint32_t now);
+    bool running(uint32_t now) const;
 };
 
 // Button.h

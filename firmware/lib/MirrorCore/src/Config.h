@@ -70,6 +70,13 @@ constexpr uint32_t AUTO_EFFECT_MAX_MS = 5UL * 60 * 1000;   // 5 min
 constexpr uint32_t PIR_COOLDOWN_MS    = 15UL * 1000;       // 15 s
 constexpr uint32_t PIR_BLACKOUT_MS    = 2UL * 1000;        // 2 s
 
+// --- Transitions (v1.2.0) ---------------------------------------------------
+// Colour/brightness/mode changes from commands and the double click fade
+// linearly; button dimming is applied at once (it is already stepped every
+// DIM_PERIOD_MS).
+constexpr uint32_t TRANSITION_MS      = 500;
+constexpr uint32_t TRANSITION_STEP_MS = 20;
+
 // --- Button -----------------------------------------------------------------
 constexpr uint32_t CLICK_GAP_MS  = 400;
 constexpr uint32_t HOLD_MS       = 500;
@@ -96,6 +103,6 @@ constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.1.1";
+constexpr char FW_VERSION[] = "1.2.0";
 
 }  // namespace cfg

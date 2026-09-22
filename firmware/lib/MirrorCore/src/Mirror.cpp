@@ -27,8 +27,36 @@ bool Mirror::glitchAllowed() const {
            !holding_;
 }
 
-Rgbw Mirror::baseColor() const {
+// The colour the targets ask for; what is on screen is shownColor_.
+Rgbw Mirror::targetColor() const {
     return base_ == BaseMode::Makeup ? Rgbw{0, 0, 0, 255} : Rgbw{r_, g_, b_, 0};
+}
+
+Rgbw Mirror::baseColor() const { return shownColor_; }
+
+// Called after any change of the targets. smooth=true fades from the shown
+// values over TRANSITION_MS while lit; otherwise (or while OFF/SLIDE_OFF)
+// the targets apply at once.
+void Mirror::retarget(uint32_t now, bool smooth) {
+    const Rgbw target = targetColor();
+    const bool lit = (power_ == PowerState::On || power_ == PowerState::SlideOn);
+    if (smooth && lit && (!(target == shownColor_) || brightness_ != shownBrightness_)) {
+        fromColor_ = shownColor_;
+        fromBrightness_ = shownBrightness_;
+        trans_.start(0, 255, now, cfg::TRANSITION_MS);
+        lastTransStepMs_ = now;
+    } else {
+        shownColor_ = target;
+        shownBrightness_ = brightness_;
+        trans_.set(255);
+    }
+    staticDirty_ = true;
+}
+
+// Every render ends here: brightness applied to the whole frame, frame flagged.
+void Mirror::finishFrame() {
+    frame_.scale(shownBrightness_);
+    frameDirty_ = true;
 }
 
 EffectContext Mirror::ctx() const { return EffectContext{baseColor(), rnd_}; }
@@ -41,6 +69,7 @@ void Mirror::powerOn(uint32_t now) {
     } else {
         return;  // SlideOn/On: no-op (table 4.1)
     }
+    retarget(now, false);  // a base/colour set together with power-on shows at once, no fade
     power_ = PowerState::SlideOn;
     lastStepMs_ = now;
     gate_.onPowerOn();
@@ -97,6 +126,9 @@ void Mirror::applyDefaults() {
     brightness_ = cfg::DEFAULT_BRIGHTNESS;
     effect_ = EffectId::None;
     pending_ = EffectId::None;
+    shownColor_ = targetColor();
+    shownBrightness_ = brightness_;
+    trans_.set(255);
 }
 
 void Mirror::begin(uint32_t now) {
@@ -111,25 +143,27 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
     switch (cmd.type) {
         case CommandType::Light: {
             const LightCommand& lc = cmd.light;
+            bool changed = false;
 
             if (lc.brightness >= 1) {
                 brightness_ = static_cast<uint8_t>(lc.brightness);
-                staticDirty_ = true;
+                changed = true;
             }
             if (lc.r >= 0 || lc.g >= 0 || lc.b >= 0) {
                 if (lc.r >= 0) r_ = static_cast<uint8_t>(lc.r);
                 if (lc.g >= 0) g_ = static_cast<uint8_t>(lc.g);
                 if (lc.b >= 0) b_ = static_cast<uint8_t>(lc.b);
                 base_ = BaseMode::Solid;
-                staticDirty_ = true;
+                changed = true;
             }
             if (lc.effect == EffectRequest::Solid) {
                 base_ = BaseMode::Solid;
-                staticDirty_ = true;
+                changed = true;
             } else if (lc.effect == EffectRequest::Makeup) {
                 base_ = BaseMode::Makeup;
-                staticDirty_ = true;
+                changed = true;
             }
+            if (changed) retarget(now, true);  // a bare ON must not cut a running fade
 
             if (lc.brightness == 0 || lc.state == 0) {
                 powerOff(true, now);
@@ -155,7 +189,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             } else {
                 base_ = BaseMode::Solid;
             }
-            staticDirty_ = true;
+            retarget(now, true);  // after a power-on from OFF this only marks the frame
             break;
         case CommandType::NightMode:
             if (cmd.flag) {
@@ -193,7 +227,7 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
                     powerOn(now);
                 } else {
                     base_ = (base_ == BaseMode::Solid) ? BaseMode::Makeup : BaseMode::Solid;
-                    staticDirty_ = true;
+                    retarget(now, true);
                 }
             } else if (ev.clicks == 3) {
                 startRandomEffect(now);
@@ -223,7 +257,7 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
                     dimDir_ = static_cast<int16_t>(cfg::DIM_STEP);
                 }
                 brightness_ = static_cast<uint8_t>(v);
-                staticDirty_ = true;
+                retarget(now, false);  // dimming is already stepped: no fade
             }
             break;
         case ButtonEventType::HoldEnd:
@@ -255,6 +289,14 @@ void Mirror::onPir(bool level, uint32_t now) {
 void Mirror::tick(uint32_t now) {
     gate_.tick(now);
 
+    if (trans_.active && (uint32_t)(now - lastTransStepMs_) >= cfg::TRANSITION_STEP_MS) {
+        lastTransStepMs_ = now;
+        const uint8_t t = trans_.value(now);  // retires itself at the end (t == 255)
+        shownColor_ = lerp(fromColor_, targetColor(), t);
+        shownBrightness_ = lerp8(fromBrightness_, brightness_, t);
+        staticDirty_ = true;
+    }
+
     if (gate_.automationActive() && power_ == PowerState::On) {
         if ((uint32_t)(now - lastActivity_) > cfg::AUTO_OFF_MS) {
             MLOG("[%lu] AUTO-OFF (idle %lu ms)\n", (unsigned long)now,
@@ -271,8 +313,7 @@ void Mirror::tick(uint32_t now) {
         lastStepMs_ = now;
         bool wasTurningOn = slide_.turningOn();
         bool running = slide_.step(frame_, baseColor());
-        frame_.scale(brightness_);
-        frameDirty_ = true;
+        finishFrame();
 
         if (!running) {
             if (wasTurningOn) {
@@ -303,8 +344,7 @@ void Mirror::tick(uint32_t now) {
         if (fx != nullptr && (uint32_t)(now - lastStepMs_) >= static_cast<uint32_t>(fx->stepIntervalMs())) {
             lastStepMs_ = now;
             bool running = fx->step(frame_, ctx());
-            frame_.scale(brightness_);
-            frameDirty_ = true;
+            finishFrame();
             if (!running) {
                 effect_ = EffectId::None;
                 lastIdle_ = now;
@@ -318,8 +358,7 @@ void Mirror::tick(uint32_t now) {
     if (power_ == PowerState::On && effect_ == EffectId::None && staticDirty_) {
         frame_.fill(baseColor());
         staticDirty_ = false;
-        frame_.scale(brightness_);
-        frameDirty_ = true;
+        finishFrame();
     }
 }
 
@@ -337,8 +376,7 @@ void Mirror::tickGlitch(uint32_t now) {
         if ((uint32_t)(now - lastGlitchStepMs_) >= cfg::GLITCH_STEP_MS) {
             lastGlitchStepMs_ = now;
             glitch_.step(frame_, baseColor(), rnd_, now);  // last step renders plain base
-            frame_.scale(brightness_);
-            frameDirty_ = true;
+            finishFrame();
         }
         return;
     }
@@ -351,8 +389,7 @@ void Mirror::tickGlitch(uint32_t now) {
     glitch_.start(rnd_, now);
     lastGlitchStepMs_ = now;
     glitch_.step(frame_, baseColor(), rnd_, now);
-    frame_.scale(brightness_);
-    frameDirty_ = true;
+    finishFrame();
     MLOG("[%lu] GLITCH at %u x%u for %lu ms\n", (unsigned long)now, (unsigned)glitch_.first(),
          (unsigned)glitch_.length(), (unsigned long)glitch_.durationMs());
 }

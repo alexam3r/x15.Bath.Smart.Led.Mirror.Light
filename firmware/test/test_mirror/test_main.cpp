@@ -286,11 +286,11 @@ static void test_click2_toggles_base_when_on(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 
     m.onButton(click(2), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 
     m.onButton(click(2), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 }
 
@@ -637,11 +637,11 @@ static void test_color_switches_to_solid(void) {
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.onButton(click(2), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 
     m.apply(lightColor(10, 20, 30), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), Rgbw{10, 20, 30, 0}));
 }
 
@@ -656,7 +656,7 @@ static void test_apply_defaults_only_after_slide_off(void) {
 
     m.apply(lightColor(10, 20, 30), now);
     m.apply(lightBrightness(100), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     Rgbw custom = scale(Rgbw{10, 20, 30, 0}, 100);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), custom));
 
@@ -684,7 +684,7 @@ static void test_makeup_command_powers_on_from_off(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 
     m.apply(makeupCmd(false), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(PowerState::On == m.power());
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 }
@@ -1271,7 +1271,7 @@ static void test_frame_brightness_applied(void) {
     run(m, now, kSlideMs);
 
     m.apply(lightBrightness(128), now);
-    run(m, now, 10);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, 128)));
 }
 
@@ -1365,6 +1365,7 @@ static void test_glitch_never_in_makeup(void) {
     m.begin(now);
     const uint32_t onAt = powerOnSettled(m, now);
     m.apply(makeupCmd(true), now);
+    run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
     TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kMakeupColor));
 }
 
@@ -1469,7 +1470,12 @@ static void test_glitch_cancelled_by_color_change(void) {
 
     m.apply(lightColor(0, 0, 255), now);
     const Rgbw blue{0, 0, 255, 0};
-    run(m, now, 10);
+    for (int i = 0; i < 20; ++i) {  // mid-fade, and the 300 ms glitch would still be running
+        now += 5;
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), m.frame()[100]), "glitch pixels after a colour change");
+    }
+    run(m, now, cfg::TRANSITION_MS);  // let the colour fade finish
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), blue));
     TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, now + cfg::GLITCH_DURATION_MAX_MS, blue),
                               "the glitch kept running after a colour change");
@@ -1491,6 +1497,127 @@ static void test_glitch_does_not_delay_auto_effect(void) {
     TEST_ASSERT_TRUE_MESSAGE(glitched, "no glitch in the first 4 minutes");
     run(m, now, 100);
     TEST_ASSERT_TRUE_MESSAGE(EffectId::None != m.snapshot().effect, "glitches delayed the auto effect");
+}
+
+// --- Transitions (v1.2.0): colour/brightness/mode changes from commands and
+// the double click fade over cfg::TRANSITION_MS; button dimming and power-on
+// from OFF apply at once. ----------------------------------------------------
+
+static bool channelBetween(uint8_t v, uint8_t lo, uint8_t hi) { return v >= lo && v <= hi; }
+
+static void test_color_command_transitions_over_500ms(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+
+    m.apply(lightColor(0, 0, 255), now);
+    TEST_ASSERT_EQUAL_UINT8(0, m.snapshot().r);  // state reports the target at once
+    TEST_ASSERT_EQUAL_UINT8(255, m.snapshot().b);
+    run(m, now, cfg::TRANSITION_MS / 2);
+    const Rgbw mid = m.frame()[0];
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), mid), "transition frame is not uniform");
+    TEST_ASSERT_TRUE_MESSAGE(channelBetween(mid.r, 110, 145), "red did not fade halfway at 250 ms");
+    TEST_ASSERT_TRUE_MESSAGE(channelBetween(mid.b, 130, 170), "blue did not rise halfway at 250 ms");
+    run(m, now, cfg::TRANSITION_MS / 2 + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), Rgbw{0, 0, 255, 0}));
+}
+
+static void test_brightness_command_transitions(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+
+    m.apply(lightBrightness(55), now);
+    TEST_ASSERT_EQUAL_UINT8(55, m.snapshot().brightness);
+    run(m, now, cfg::TRANSITION_MS / 2);
+    TEST_ASSERT_TRUE(channelBetween(m.frame()[0].r, scale8(255, 140), scale8(255, 170)));
+    run(m, now, cfg::TRANSITION_MS / 2 + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, 55)));
+}
+
+static void test_makeup_toggle_transitions(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+
+    m.onButton(click(2), now);  // solid -> makeup
+    run(m, now, cfg::TRANSITION_MS / 2);
+    const Rgbw mid = m.frame()[0];
+    TEST_ASSERT_TRUE(channelBetween(mid.r, 110, 145));
+    TEST_ASSERT_TRUE(channelBetween(mid.w, 110, 145));
+    run(m, now, cfg::TRANSITION_MS / 2 + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
+}
+
+// A new command mid-transition fades on from the colour currently shown.
+static void test_command_mid_transition_continues_from_shown_colour(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+
+    m.apply(lightColor(0, 0, 255), now);
+    run(m, now, cfg::TRANSITION_MS / 2);
+    const Rgbw mid = m.frame()[0];
+    m.apply(lightColor(0, 255, 0), now);
+    run(m, now, 5);
+    const Rgbw after = m.frame()[0];
+    TEST_ASSERT_TRUE_MESSAGE(channelBetween(after.r, mid.r - 10, mid.r), "restarted from the old target");
+    run(m, now, cfg::TRANSITION_MS + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), Rgbw{0, 255, 0, 0}));
+}
+
+static void test_hold_dimming_stays_immediate(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+
+    m.onButton(holdStart(), now);
+    // v27: from DIM_MAX the first tick clamps and turns downwards, the second dims.
+    for (int i = 0; i < 2; ++i) {
+        now += cfg::DIM_PERIOD_MS;
+        m.onButton(holdTick(), now);
+    }
+    m.tick(now);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::DIM_MAX - cfg::DIM_STEP)));
+    m.onButton(holdEnd(), now);
+}
+
+static void test_power_on_from_off_uses_new_colour_at_once(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(makeupCmd(true), now);  // from OFF: base = makeup and power on, no fade
+    run(m, now, cfg::SLIDE_STEP_MS * 12);
+    bool sawLit = false;
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        const Rgbw p = m.frame()[i];
+        if (p.w > 0) sawLit = true;
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, p.r, "slide-in painted the old solid colour");
+    }
+    TEST_ASSERT_TRUE(sawLit);
+}
+
+// A double click while sliding off reverses the slide in makeup: the new base
+// shows at once and stays (nothing may keep the old solid colour on screen).
+static void test_click2_during_slide_off_shows_makeup(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.onButton(click(1), now);
+    run(m, now, cfg::SLIDE_STEP_MS * 5);
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+
+    m.onButton(click(2), now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -1564,5 +1691,12 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_glitch_skipped_during_effect);
     RUN_TEST(test_glitch_cancelled_by_color_change);
     RUN_TEST(test_glitch_does_not_delay_auto_effect);
+    RUN_TEST(test_color_command_transitions_over_500ms);
+    RUN_TEST(test_brightness_command_transitions);
+    RUN_TEST(test_makeup_toggle_transitions);
+    RUN_TEST(test_command_mid_transition_continues_from_shown_colour);
+    RUN_TEST(test_hold_dimming_stays_immediate);
+    RUN_TEST(test_power_on_from_off_uses_new_colour_at_once);
+    RUN_TEST(test_click2_during_slide_off_shows_makeup);
     return UNITY_END();
 }

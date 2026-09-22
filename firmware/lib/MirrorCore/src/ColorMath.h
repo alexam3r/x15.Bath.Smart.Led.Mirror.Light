@@ -19,6 +19,12 @@ uint8_t scale8(uint8_t x, uint8_t k);
 // scale8 applied independently to each of r, g, b, w.
 Rgbw scale(Rgbw c, uint8_t k);
 
+// a + (b - a) * t / 255: lerp8(a, b, 0) == a, lerp8(a, b, 255) == b.
+uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t);
+
+// lerp8 applied independently to each of r, g, b, w.
+Rgbw lerp(Rgbw a, Rgbw b, uint8_t t);
+
 // Adafruit_NeoPixel::ColorHSV(hue, 255, 255), split into Rgbw (w = 0).
 Rgbw hsv(uint16_t hue);
 

@@ -10,6 +10,7 @@
 #include "Config.h"
 #include "Frame.h"
 #include "MotionGate.h"
+#include "Ramp.h"
 #include "Types.h"
 #include "effects/Effect.h"
 #include "effects/Glitch.h"
@@ -42,7 +43,10 @@ private:
     void startEffect(EffectId id, uint32_t now);
     void startRandomEffect(uint32_t now);
     void applyDefaults();
+    Rgbw targetColor() const;
     Rgbw baseColor() const;
+    void retarget(uint32_t now, bool smooth);
+    void finishFrame();
     EffectContext ctx() const;
 
     RandomFn rnd_;
@@ -59,6 +63,15 @@ private:
     int16_t dimDir_ = static_cast<int16_t>(cfg::DIM_STEP);  // v27 initial +5
     bool    holdLocked_ = false;
     bool    holding_    = false;  // between HoldStart and HoldEnd
+
+    // Shown (rendered) base colour/brightness: follow the targets r_/g_/b_/
+    // base_/brightness_ through a TRANSITION_MS ramp (v1.2.0).
+    Rgbw     shownColor_{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+    uint8_t  shownBrightness_ = cfg::DEFAULT_BRIGHTNESS;
+    Rgbw     fromColor_{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+    uint8_t  fromBrightness_  = cfg::DEFAULT_BRIGHTNESS;
+    Ramp     trans_;
+    uint32_t lastTransStepMs_ = 0;
 
     uint32_t lastActivity_     = 0;
     uint32_t lastIdle_         = 0;
