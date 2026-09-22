@@ -27,6 +27,23 @@ bool toCommand(Route route, const uint8_t* payload, size_t len, Command& out);
 // Serializes a StateSnapshot as the `<base>/state` JSON (section 5.3) into
 // `buf` (capacity `cap`). Returns bytes written (NUL not counted), or 0 if
 // it would not fit.
+// Diagnostics published on <base>/diag (v1.2.0). Gathered on Core 0 only —
+// Mirror neither sees nor cares about any of it.
+struct DiagInfo {
+    uint32_t uptimeS     = 0;
+    int8_t   rssi        = 0;
+    uint8_t  resetReason = 0;  // esp_reset_reason_t value
+    uint32_t freeHeap    = 0;
+    uint32_t minFreeHeap = 0;
+};
+
+// "POWERON", "EXT", "SW", "PANIC", "INT_WDT", "TASK_WDT", "WDT",
+// "DEEPSLEEP", "BROWNOUT", "SDIO"; "UNKNOWN" for anything else.
+const char* resetReasonName(uint8_t code);
+
+// Serialises DiagInfo; 0 if it does not fit `cap` (like buildStateJson).
+size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap);
+
 size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);
 
 // True if `a` and `b` would serialize to different `<base>/state` JSON, i.e.

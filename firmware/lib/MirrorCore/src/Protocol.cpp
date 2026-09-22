@@ -117,6 +117,34 @@ bool toCommand(Route route, const uint8_t* payload, size_t len, Command& out) {
     return false;
 }
 
+const char* resetReasonName(uint8_t code) {
+    switch (code) {  // esp_reset_reason_t (ESP-IDF 4.4)
+        case 1:  return "POWERON";
+        case 2:  return "EXT";
+        case 3:  return "SW";
+        case 4:  return "PANIC";
+        case 5:  return "INT_WDT";
+        case 6:  return "TASK_WDT";
+        case 7:  return "WDT";
+        case 8:  return "DEEPSLEEP";
+        case 9:  return "BROWNOUT";
+        case 10: return "SDIO";
+        default: return "UNKNOWN";
+    }
+}
+
+size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap) {
+    JsonDocument doc;
+    doc["uptime_s"]      = d.uptimeS;
+    doc["rssi"]          = d.rssi;
+    doc["reset_reason"]  = resetReasonName(d.resetReason);
+    doc["free_heap"]     = d.freeHeap;
+    doc["min_free_heap"] = d.minFreeHeap;
+    doc["fw"]            = cfg::FW_VERSION;
+    if (measureJson(doc) >= cap) return 0;
+    return serializeJson(doc, buf, cap);
+}
+
 size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap) {
     JsonDocument doc;
     doc["state"] = s.on ? "ON" : "OFF";

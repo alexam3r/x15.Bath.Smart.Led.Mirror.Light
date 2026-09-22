@@ -142,6 +142,9 @@ constexpr uint32_t TELEMETRY_PERIOD_MS        = 10UL * 1000;      // 10 s
 constexpr uint32_t PUBLISH_MIN_INTERVAL_MS    = 250;
 constexpr uint16_t MQTT_BUFFER_SIZE           = 512;
 constexpr size_t   STATE_JSON_CAP             = 384;
+// Diagnostics (v1.2.0): retained <base>/diag, on connect and once a minute.
+constexpr uint32_t DIAG_PERIOD_MS             = 60UL * 1000;     // 1 min
+constexpr size_t   DIAG_JSON_CAP              = 192;
 constexpr uint8_t  WIFI_CONNECT_ATTEMPTS      = 20;
 constexpr uint32_t WIFI_ATTEMPT_DELAY_MS      = 500;
 constexpr uint32_t MQTT_RETRY_DELAY_MS        = 5000;

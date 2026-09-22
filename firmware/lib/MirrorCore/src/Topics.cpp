@@ -19,6 +19,7 @@ void Topics::init(const char* base) {
     std::snprintf(availability, sizeof(availability), "%s/availability", base);
     std::snprintf(glitchSet, sizeof(glitchSet), "%s/glitch/set", base);
     std::snprintf(glitchState, sizeof(glitchState), "%s/glitch/state", base);
+    std::snprintf(diag, sizeof(diag), "%s/diag", base);
 }
 
 Route routeTopic(const char* topic, const char* base) {

@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <esp_system.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -47,6 +48,30 @@ bool lastMakeup     = false;
 bool lastNightMode  = false;
 bool lastPir        = false;
 bool lastGlitch     = false;
+
+// Diagnostics (v1.2.0): uptime is counted here in whole seconds so it
+// survives the 49.7-day millis() wraparound.
+uint32_t uptimeS        = 0;
+uint32_t lastUptimeTick = 0;
+uint32_t lastDiagPublish = 0;
+
+// Publishes `<base>/diag` (retain): uptime, WiFi level, last reset reason,
+// free heap. Diagnostics live outside `<base>/state` on purpose — uptime
+// changes every second and would churn the JSON Light entity in HA.
+void publishDiag() {
+    DiagInfo d;
+    d.uptimeS     = uptimeS;
+    d.rssi        = static_cast<int8_t>(WiFi.RSSI());
+    d.resetReason = static_cast<uint8_t>(esp_reset_reason());
+    d.freeHeap    = ESP.getFreeHeap();
+    d.minFreeHeap = ESP.getMinFreeHeap();
+    char buf[cfg::DIAG_JSON_CAP];
+    if (buildDiagJson(d, buf, sizeof(buf)) == 0) {
+        MLOG("diag json did not fit\n");
+        return;
+    }
+    mqtt.publish(topics.diag, buf, true);
+}
 
 // Publishes only `<base>/state` (retain). blink=true — only the 10 s
 // heartbeat (Ruling R16) — wraps it in the v27 dim-green 50 ms status-LED
@@ -142,11 +167,18 @@ void task(void*) {
     xQueueReceive(snapQueueHandle, &latest, portMAX_DELAY);
 
     uint32_t lastWatchdogCheck = millis();
+    lastUptimeTick = lastWatchdogCheck;
     uint32_t wifiDownAccumMs   = 0;
     uint32_t mqttDownAccumMs   = 0;
 
     for (;;) {
         const uint32_t now = millis();
+
+        // Uptime in whole seconds, counted by difference (wraparound-safe).
+        while ((uint32_t)(now - lastUptimeTick) >= 1000) {
+            lastUptimeTick += 1000;
+            ++uptimeS;
+        }
 
         // 1. Watchdog — cumulative WiFi/MQTT downtime, checked every
         //    WATCHDOG_CHECK_INTERVAL_MS; restart after WATCHDOG_TIMEOUT_MS
@@ -230,9 +262,11 @@ void task(void*) {
 
                 publishAll(latest);
                 const uint32_t connectedAt = millis();  // not `now` — mqtt.connect() and the 1 s flash both block
+                publishDiag();
                 pending          = false;
                 lastPublish      = connectedAt;
                 lastStatePublish = connectedAt;
+                lastDiagPublish  = connectedAt;
 
                 if (!stackReported) {
                     // Debug build only (MLOG compiles to nothing otherwise):
@@ -268,6 +302,11 @@ void task(void*) {
             if ((uint32_t)(now - lastStatePublish) >= cfg::TELEMETRY_PERIOD_MS) {
                 publishState(latest, true);  // heartbeat: state only, with the status-LED blink
                 lastStatePublish = now;
+            }
+
+            if ((uint32_t)(now - lastDiagPublish) >= cfg::DIAG_PERIOD_MS) {
+                publishDiag();
+                lastDiagPublish = now;
             }
         }
 

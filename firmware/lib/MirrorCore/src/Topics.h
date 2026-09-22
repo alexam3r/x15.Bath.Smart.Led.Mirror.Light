@@ -22,6 +22,7 @@ struct Topics {
     char availability[96];
     char glitchSet[96];
     char glitchState[96];
+    char diag[96];  // outgoing only (v1.2.0): never routed back in
 
     void init(const char* base);  // snprintf each; base without trailing slash
 };

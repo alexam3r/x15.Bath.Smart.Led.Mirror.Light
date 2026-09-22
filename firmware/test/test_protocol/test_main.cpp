@@ -455,6 +455,54 @@ static void test_state_json_differs_ignores_pir_only(void) {
     TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
 }
 
+// --- Diagnostics topic (v1.2.0) ---------------------------------------------
+
+static void test_diag_topic_built_from_base(void) {
+    Topics t;
+    t.init(kBase);
+    TEST_ASSERT_EQUAL_STRING("home/flat8/bath/mirror/diag", t.diag);
+    // Outgoing only: an incoming message on it must not route anywhere.
+    TEST_ASSERT_TRUE(Route::Unknown == routeTopic("home/flat8/bath/mirror/diag", kBase));
+}
+
+static void test_reset_reason_names(void) {
+    TEST_ASSERT_EQUAL_STRING("POWERON", resetReasonName(1));
+    TEST_ASSERT_EQUAL_STRING("EXT", resetReasonName(2));
+    TEST_ASSERT_EQUAL_STRING("SW", resetReasonName(3));
+    TEST_ASSERT_EQUAL_STRING("PANIC", resetReasonName(4));
+    TEST_ASSERT_EQUAL_STRING("INT_WDT", resetReasonName(5));
+    TEST_ASSERT_EQUAL_STRING("TASK_WDT", resetReasonName(6));
+    TEST_ASSERT_EQUAL_STRING("WDT", resetReasonName(7));
+    TEST_ASSERT_EQUAL_STRING("DEEPSLEEP", resetReasonName(8));
+    TEST_ASSERT_EQUAL_STRING("BROWNOUT", resetReasonName(9));
+    TEST_ASSERT_EQUAL_STRING("SDIO", resetReasonName(10));
+    TEST_ASSERT_EQUAL_STRING("UNKNOWN", resetReasonName(0));
+    TEST_ASSERT_EQUAL_STRING("UNKNOWN", resetReasonName(99));
+}
+
+static void test_diag_json(void) {
+    DiagInfo d;
+    d.uptimeS = 3723;
+    d.rssi = -61;
+    d.resetReason = 1;
+    d.freeHeap = 231000;
+    d.minFreeHeap = 198000;
+    char buf[cfg::DIAG_JSON_CAP];
+    const size_t n = buildDiagJson(d, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"uptime_s\":3723,\"rssi\":-61,\"reset_reason\":\"POWERON\","
+        "\"free_heap\":231000,\"min_free_heap\":198000,\"fw\":\"1.2.0\"}",
+        buf);
+    TEST_ASSERT_EQUAL_UINT32(n, strlen(buf));
+}
+
+static void test_diag_json_zero_when_buffer_too_small(void) {
+    DiagInfo d;
+    char small[16];
+    TEST_ASSERT_EQUAL_UINT32(0, buildDiagJson(d, small, sizeof(small)));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_topics_built_from_base);
@@ -479,5 +527,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_state_json_fits_384_bytes);
     RUN_TEST(test_state_json_zero_when_buffer_too_small);
     RUN_TEST(test_state_json_differs_ignores_pir_only);
+    RUN_TEST(test_diag_topic_built_from_base);
+    RUN_TEST(test_reset_reason_names);
+    RUN_TEST(test_diag_json);
+    RUN_TEST(test_diag_json_zero_when_buffer_too_small);
     return UNITY_END();
 }

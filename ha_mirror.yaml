@@ -153,3 +153,48 @@ mqtt:
       entity_category: diagnostic
       icon: "mdi:chip"
       device: *mirror_device
+
+    # --- Диагностика (топик diag: при подключении и раз в минуту, retained) ---
+    - name: "Зеркало: аптайм"
+      unique_id: mirror_uptime
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.uptime_s }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      device_class: duration
+      unit_of_measurement: "s"
+      state_class: measurement
+      entity_category: diagnostic
+      icon: "mdi:timer-outline"
+      device: *mirror_device
+
+    - name: "Зеркало: WiFi"
+      unique_id: mirror_wifi_rssi
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.rssi }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      device_class: signal_strength
+      unit_of_measurement: "dBm"
+      state_class: measurement
+      entity_category: diagnostic
+      device: *mirror_device
+
+    - name: "Зеркало: причина перезагрузки"
+      unique_id: mirror_reset_reason
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.reset_reason }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      entity_category: diagnostic
+      icon: "mdi:restart-alert"
+      device: *mirror_device
+
+    - name: "Зеркало: свободная память"
+      unique_id: mirror_free_heap
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.free_heap }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      device_class: data_size
+      unit_of_measurement: "B"
+      state_class: measurement
+      entity_category: diagnostic
+      icon: "mdi:memory"
+      device: *mirror_device
