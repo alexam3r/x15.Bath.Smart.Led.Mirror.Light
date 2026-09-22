@@ -1277,9 +1277,10 @@ static void test_frame_brightness_applied(void) {
 
 // --- Glitch overlay ("neon failure", v1.1.0) --------------------------------
 //
-// zeroRandom: every interval is GLITCH_INTERVAL_MIN_MS (45 s), the segment
-// starts at pixel 0 with GLITCH_LEN_MIN (3) pixels, lasts 300 ms, and every
-// neon level pick is kGlitchLevels[0] (off) -> pixels 0..2 go black.
+// zeroRandom: every interval is GLITCH_INTERVAL_MIN_MS (45 s), the core
+// starts at pixel 0 with GLITCH_LEN_MIN (3) pixels and GLITCH_EDGE_MIN (2)
+// edge pixels each side, lasts 300 ms, and every neon level pick is
+// kGlitchLevels[0] (off) -> pixels 0..2 go black, 3,4 and 167,166 fade.
 
 static Command glitchCmd(bool on) {
     Command c;
@@ -1329,8 +1330,10 @@ static void test_glitch_first_fires_45s_after_power_on(void) {
     const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
     TEST_ASSERT_TRUE(off == m.frame()[0]);
     TEST_ASSERT_TRUE(off == m.frame()[2]);
-    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[3]);
-    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[167]);
+    TEST_ASSERT_TRUE(scale(kSolidDefault, 85) == m.frame()[3]);    // soft edge, 1/3 of the way
+    TEST_ASSERT_TRUE(scale(kSolidDefault, 85) == m.frame()[167]);  // left edge wraps below 0
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[5]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[165]);
     TEST_ASSERT_TRUE_MESSAGE(before == m.snapshot(), "glitch changed the reported state");
 
     run(m, now, cfg::GLITCH_DURATION_MIN_MS + cfg::GLITCH_STEP_MS);
@@ -1348,9 +1351,12 @@ static void test_glitch_interval_upper_bound_is_90s(void) {
     m.tick(now);
     const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
     TEST_ASSERT_TRUE(off == m.frame()[167]);
-    TEST_ASSERT_TRUE(off == m.frame()[4]);  // 6 pixels: 167, 0..4
-    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[5]);
-    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[166]);
+    TEST_ASSERT_TRUE(off == m.frame()[4]);  // 6-pixel core: 167, 0..4
+    TEST_ASSERT_TRUE(scale(kSolidDefault, 63) == m.frame()[5]);    // 3-pixel edges: 5..7, 166..164
+    TEST_ASSERT_TRUE(scale(kSolidDefault, 191) == m.frame()[7]);
+    TEST_ASSERT_TRUE(scale(kSolidDefault, 191) == m.frame()[164]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[8]);
+    TEST_ASSERT_TRUE(kSolidDefault == m.frame()[163]);
 }
 
 static void test_glitch_never_in_makeup(void) {
