@@ -59,6 +59,14 @@ void setup() {
     xQueueOverwrite(snapQueue, &lastSnapshot);
 
     network::start(cmdQueue, snapQueue);
+
+    // Core 1 has no watchdog by default (the Arduino core leaves the loop
+    // task unsubscribed and sdkconfig only watches the Core 0 idle task). A
+    // hung show() or loop() would freeze the mirror for good while Core 0
+    // kept reporting it healthy. With this the Arduino core feeds the task
+    // watchdog before every loop() pass (every 5..12 ms); a pass that takes
+    // longer than CONFIG_ESP_TASK_WDT_TIMEOUT_S (5 s) panics and reboots.
+    enableLoopWDT();
 }
 
 void loop() {
