@@ -1895,9 +1895,9 @@ static void test_choosing_solid_stops_a_running_effect(void) {
     uint32_t now = 0;
     m.begin(now);
     powerOnSettled(m, now);
-    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Candle), now);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Embers), now);
     run(m, now, 200);
-    TEST_ASSERT_TRUE(EffectId::Candle == m.snapshot().effect);
+    TEST_ASSERT_TRUE(EffectId::Embers == m.snapshot().effect);
 
     m.apply(lightEffect(EffectRequest::Solid), now);  // picked "solid" in the HA effect list
     TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect, "the running effect kept going");

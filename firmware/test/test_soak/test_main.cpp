@@ -147,7 +147,6 @@ uint32_t effectMaxSteps(EffectId id) {
         case EffectId::Wave: return cfg::TOTAL_LEDS / 2 + cfg::WAVE_RADIUS + 1;
         case EffectId::Breathe: return cfg::BREATHE_CYCLE_STEPS * cfg::BREATHE_CYCLES;
         case EffectId::Embers: return cfg::EMBERS_STEPS;
-        case EffectId::Candle: return cfg::CANDLE_STEPS;
         case EffectId::Comet: return cfg::TOTAL_LEDS + cfg::COMET_TAIL + 1;
         case EffectId::None: break;
     }

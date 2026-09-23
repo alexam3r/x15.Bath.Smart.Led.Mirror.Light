@@ -262,10 +262,10 @@ static void test_light_effect_names(void) {
     TEST_ASSERT_TRUE(EffectRequest::Temporary == embers.effect);
     TEST_ASSERT_TRUE(EffectId::Embers == embers.effectId);
 
+    // candle was removed in v1.3.0: its name is unknown now and ignored.
     LightCommand candle;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"candle\"}", candle));
-    TEST_ASSERT_TRUE(EffectRequest::Temporary == candle.effect);
-    TEST_ASSERT_TRUE(EffectId::Candle == candle.effectId);
+    TEST_ASSERT_TRUE(EffectRequest::None == candle.effect);
 
     LightCommand comet;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"comet\"}", comet));

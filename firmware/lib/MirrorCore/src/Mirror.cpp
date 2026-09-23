@@ -183,7 +183,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 base_ = (lc.effect == EffectRequest::Solid) ? BaseMode::Solid : BaseMode::Makeup;
                 // Picking a base mode in the HA effect list ends a running
                 // or pending temporary effect (v1.2.1): otherwise a 20 s
-                // candle kept going and the list jumped back to "candle".
+                // effect kept going and the list jumped back to its name.
                 effect_ = EffectId::None;
                 pending_ = EffectId::None;
                 changed = true;

@@ -20,7 +20,7 @@ struct EffectContext {
 
 // Weight of an effect over the plain base for this step, 0..255: ramps up
 // over the first `fade` steps and back down over the last `fade` (v1.2.0,
-// shared by Embers and Candle).
+// shared by the effects).
 inline uint8_t fadeAlpha(uint16_t step, uint16_t total, uint16_t fade) {
     if (step < fade) return static_cast<uint8_t>(step * 255 / fade);
     if (step > total - fade) return static_cast<uint8_t>((total - step) * 255 / fade);
