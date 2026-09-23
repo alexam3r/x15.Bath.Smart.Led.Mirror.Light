@@ -26,8 +26,12 @@ bool GlitchOverlay::step(Frame& out, Rgbw base, RandomFn rnd, uint32_t now) {
         out[(first_ + k) % cfg::TOTAL_LEDS] = lit;
     }
     const uint16_t last = static_cast<uint16_t>(first_ + length_ - 1);
+    // Edge: even steps of perceived brightness (CIE 1931, v1.3.0) from the
+    // core's level up to full — a linear-PWM edge looked nearly full right
+    // after the dark core. The core itself keeps its PWM level.
+    const uint8_t core = lightness8(level);
     for (uint8_t k = 1; k <= edge_; ++k) {
-        const Rgbw fade = scale(base, static_cast<uint8_t>(level + (255 - level) * k / (edge_ + 1)));
+        const Rgbw fade = scale(base, cie8(static_cast<uint8_t>(core + (255 - core) * k / (edge_ + 1))));
         out[(first_ + cfg::TOTAL_LEDS - k) % cfg::TOTAL_LEDS] = fade;  // left, wraps below 0
         out[(last + k) % cfg::TOTAL_LEDS] = fade;                       // right
     }

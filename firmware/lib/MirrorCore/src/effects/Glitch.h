@@ -1,8 +1,9 @@
 // GlitchOverlay — "neon failure" glitch (v1.1.0). A random core of
 // GLITCH_LEN_MIN..MAX adjacent ring pixels flickers between off, dim and full
 // in the base colour, like a failing neon tube, for
-// GLITCH_DURATION_MIN..MAX ms. v1.1.1: GLITCH_EDGE_MIN..MAX pixels on each
-// side fade linearly from the core's current level back to the plain base. Not an Effect: it never enters the registry,
+// GLITCH_DURATION_MIN..MAX ms. GLITCH_EDGE_MIN..MAX pixels on each side fade
+// from the core's current level back to the plain base (v1.1.1), in even
+// perceived steps (v1.3.0, CIE 1931). Not an Effect: it never enters the registry,
 // effect_list or `random`, and never changes the reported state — Mirror
 // decides when it runs (see Mirror::tick).
 #pragma once
@@ -27,8 +28,9 @@ public:
     bool active() const { return active_; }
 
     // Renders one frame at `now`: base everywhere, the core at a random neon
-    // level and each edge pixel k (1 = next to the core) at
-    // level + (255 - level) * k / (edge + 1). Once the duration is over it
+    // level and each edge pixel k (1 = next to the core) at the perceived
+    // brightness L + (255 - L) * k / (edge + 1), L = the core's level to the
+    // eye (lightness8), turned into PWM with cie8. Once the duration is over it
     // renders plain base, deactivates and returns false.
     bool step(Frame& out, Rgbw base, RandomFn rnd, uint32_t now);
 

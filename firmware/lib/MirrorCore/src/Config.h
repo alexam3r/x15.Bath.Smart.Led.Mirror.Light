@@ -67,16 +67,17 @@ constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 97
 // --- Glitch overlay ("neon failure", v1.1.0) -----------------------------
 // A random core of GLITCH_LEN_MIN..MAX adjacent pixels flickers in the base
 // colour for GLITCH_DURATION_MIN..MAX ms, once every GLITCH_INTERVAL_MIN..MAX
-// (random) while the mirror is ON, solid and idle (see Mirror::tick). v1.1.1:
-// a soft edge of GLITCH_EDGE_MIN..MAX pixels each side fades back to the base.
+// (random) while the mirror is ON, solid and idle (see Mirror::tick). A soft
+// edge of GLITCH_EDGE_MIN..MAX pixels each side fades back to the base in
+// even perceived steps (v1.1.1: 2..3 pixels; v1.3.0: 4..6, CIE 1931).
 constexpr uint32_t GLITCH_INTERVAL_MIN_MS = 45UL * 1000;
 constexpr uint32_t GLITCH_INTERVAL_MAX_MS = 90UL * 1000;
 constexpr uint32_t GLITCH_DURATION_MIN_MS = 300;
 constexpr uint32_t GLITCH_DURATION_MAX_MS = 600;
 constexpr uint8_t  GLITCH_LEN_MIN         = 3;
 constexpr uint8_t  GLITCH_LEN_MAX         = 6;
-constexpr uint8_t  GLITCH_EDGE_MIN        = 2;
-constexpr uint8_t  GLITCH_EDGE_MAX        = 3;
+constexpr uint8_t  GLITCH_EDGE_MIN        = 4;
+constexpr uint8_t  GLITCH_EDGE_MAX        = 6;
 constexpr uint32_t GLITCH_STEP_MS         = 30;
 
 // --- Radial effect start points ------------------------------------------
