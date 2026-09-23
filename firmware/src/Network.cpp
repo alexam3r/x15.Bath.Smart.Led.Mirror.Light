@@ -49,6 +49,8 @@ bool          pending          = false;
 uint32_t      lastPublish      = 0;
 uint32_t      lastStatePublish = 0;
 bool          stackReported    = false;  // stack high-water mark logged once (debug build)
+bool          dhcpWaiting      = false;  // associated with the AP, waiting for a lease
+uint32_t      dhcpWaitSince    = 0;
 
 // Last sidecar values actually published, for publishChanged()'s diffing.
 bool lastAutomation = false;
@@ -244,13 +246,23 @@ void task(void*) {
         if (WiFi.status() != WL_CONNECTED) {
             statusLed.set(100, 100, 0);
 
-            // WL_IDLE_STATUS = associated with the AP, waiting for a DHCP
-            // lease (Arduino-ESP32 2.0.17 sets it on STA_CONNECTED and
-            // LOST_IP). Don't tear that down: after a router reboot DHCP can
-            // take longer than one 10 s wait, and restarting the attempt
-            // every pass would cut it off each time. If the lease never
-            // comes, NetWatchdog (not WL_CONNECTED = down) still restarts.
-            if (WiFi.status() != WL_IDLE_STATUS) {
+            // Associated with the AP but no lease yet: don't tear that down.
+            // After a router reboot DHCP can take longer than one 10 s wait,
+            // and restarting the attempt every pass would cut it off each
+            // time. Decided from the status bits, not WL_IDLE_STATUS: the
+            // core also reports IDLE after LOST_IP while not associated at
+            // all, where only a fresh begin() helps. Capped, so a DHCP
+            // server that never answers still gets a fresh attempt.
+            const int bits = WiFi.getStatusBits();
+            const bool associated = (bits & STA_CONNECTED_BIT) && !(bits & STA_HAS_IP_BIT);
+            if (!associated) {
+                dhcpWaiting = false;
+            } else if (!dhcpWaiting) {
+                dhcpWaiting = true;
+                dhcpWaitSince = now;
+            }
+            if (!dhcpWaiting || (uint32_t)(now - dhcpWaitSince) >= cfg::WIFI_DHCP_WAIT_MAX_MS) {
+                dhcpWaiting = false;
                 WiFi.disconnect();
                 WiFi.begin(WIFI_SSID, WIFI_PASS);
             }

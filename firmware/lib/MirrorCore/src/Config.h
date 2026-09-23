@@ -160,6 +160,9 @@ constexpr uint32_t DIAG_PERIOD_MS             = 60UL * 1000;     // 1 min
 constexpr size_t   DIAG_JSON_CAP              = 192;
 constexpr uint8_t  WIFI_CONNECT_ATTEMPTS      = 20;
 constexpr uint32_t WIFI_ATTEMPT_DELAY_MS      = 500;
+// Associated with the AP but no DHCP lease yet: keep waiting this long
+// before tearing the attempt down (router reboots can be slow to lease).
+constexpr uint32_t WIFI_DHCP_WAIT_MAX_MS      = 60UL * 1000;
 constexpr uint32_t MQTT_RETRY_DELAY_MS        = 5000;
 constexpr uint32_t NETWORK_TASK_STACK         = 10000;
 
