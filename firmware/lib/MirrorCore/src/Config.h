@@ -183,6 +183,11 @@ constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
 // Longest wait for the RMT lock (RmtLock.h): a strip frame holds it ~7 ms,
 // the status LED well under 1 ms. On timeout the show is skipped and retried.
 constexpr uint32_t RMT_LOCK_TIMEOUT_MS = 50;
+// The strips failing to get the RMT lock for this long means the holder hung
+// inside show() (e.g. the status LED on Core 0 waiting forever for a lost
+// TX-done interrupt). No watchdog sees that — loop() keeps running — so
+// main.cpp restarts. Normal holds last well under 10 ms.
+constexpr uint32_t SHOW_STALL_RESTART_MS = 2000;
 // The current frame is re-sent at least this often even when it has not
 // changed: SK6812s keep whatever they last latched, so a frame garbled by
 // noise on the data line would otherwise stay until the next change (all

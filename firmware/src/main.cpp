@@ -36,6 +36,7 @@ static QueueHandle_t snapQueue = nullptr;
 static StateSnapshot lastSnapshot;
 static bool          redrawPending = false;  // last show() lost the RMT lock: draw again
 static uint32_t      lastShowMs    = 0;      // last frame actually sent to the strips
+static uint32_t      showFailingSince = 0;   // first show() that lost the RMT lock in a row
 
 static void applyFlag(CommandType type, bool flag) {
     Command c;
@@ -120,8 +121,20 @@ void loop() {
     // frame corrupted on the wire heals itself.
     const bool refreshDue = (uint32_t)(now - lastShowMs) >= cfg::FRAME_REFRESH_MS;
     if (mirror.takeFrameDirty() || redrawPending || refreshDue) {
-        redrawPending = !leds.show(mirror.frame());
-        if (!redrawPending) lastShowMs = now;
+        if (leds.show(mirror.frame())) {
+            redrawPending = false;
+            lastShowMs = now;
+        } else {
+            if (!redrawPending) showFailingSince = now;
+            redrawPending = true;
+            // The lock has been held for seconds: its holder hung in show().
+            // loop() still feeds the task watchdog, so restart ourselves.
+            if ((uint32_t)(now - showFailingSince) > cfg::SHOW_STALL_RESTART_MS) {
+                MLOG("[%lu] RMT lock held for %lu ms -> restart\n", (unsigned long)now,
+                     (unsigned long)(now - showFailingSince));
+                esp_restart();
+            }
+        }
     }
 
     StateSnapshot s = mirror.snapshot();  // 6. snapshot for the network
