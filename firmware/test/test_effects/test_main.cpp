@@ -427,6 +427,8 @@ static void test_wave_golden_frames(void) {
 // --- EffectRegistry ----------------------------------------------------------
 
 // --- Breathe (v1.2.0): whole ring, cosine 100 % -> 60 % -> 100 %, 3 cycles ---
+// Since v1.3.0 the curve is in perceived brightness (CIE 1931): the floor is
+// 60 % to the eye, not 60 % PWM (which looked like 82 %).
 
 static bool ringUniform(const Frame& f) {
     for (uint16_t i = 1; i < Frame::kSize; ++i) {
@@ -458,7 +460,7 @@ static void test_breathe_starts_full_and_dips_at_half_cycle(void) {
     TEST_ASSERT_TRUE(ringUniform(f));
     TEST_ASSERT_TRUE(kSolid == f[0]);
     for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 100
-    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cfg::BREATHE_MIN_LEVEL) == f[0], "not at 60 % halfway");
+    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cie8(cfg::BREATHE_MIN_LEVEL)) == f[0], "not at 60 % (to the eye) halfway");
     TEST_ASSERT_TRUE(ringUniform(f));
     for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 200
     TEST_ASSERT_TRUE_MESSAGE(kSolid == f[0], "did not come back to full at the cycle end");
@@ -471,7 +473,7 @@ static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
     Frame f;
     EffectContext ctx{kMakeup, zeroRandom};
     fx.begin(ctx);
-    const uint8_t floorW = scale8(255, cfg::BREATHE_MIN_LEVEL);
+    const uint8_t floorW = cie8(cfg::BREATHE_MIN_LEVEL);
     fx.step(f, ctx);
     uint8_t prev = f[0].w;
     for (int i = 1; i <= cfg::BREATHE_CYCLE_STEPS / 2; ++i) {
@@ -613,7 +615,9 @@ static void test_embers_move_smoothly_and_never_below_30_percent(void) {
     }
 }
 
-// --- Comet (v1.2.0): a white head with a quadratic tail flies one lap -------
+// --- Comet (v1.2.0): a white head with a fading tail flies one lap ----------
+// Since v1.3.0 the tail fades evenly to the eye (linear in perceived
+// brightness, CIE 1931) instead of the hand-made quadratic PWM curve.
 
 static const Rgbw kWhite{255, 255, 255, 255};
 
@@ -635,17 +639,17 @@ static void test_comet_finishes_after_one_lap_plus_tail(void) {
     TEST_ASSERT_EQUAL_INT(cfg::TOTAL_LEDS + cfg::COMET_TAIL + 1, calls + 1);  // one lap plus the tail
 }
 
-static void test_comet_head_is_white_with_a_quadratic_tail(void) {
+static void test_comet_head_is_white_with_a_tail_even_to_the_eye(void) {
     Comet fx;
     Frame f;
     EffectContext ctx{kSolid, zeroRandom};
     fx.begin(ctx);
     for (int i = 0; i <= 100; ++i) fx.step(f, ctx);  // renders step 100: head at pixel 100, full alpha
     TEST_ASSERT_TRUE_MESSAGE(kWhite == f[100], "the head must be white");
-    // 20 LEDs behind the head: t = 255 * (40-20)^2 / 40^2 = 63
-    TEST_ASSERT_TRUE(lerp(kSolid, kWhite, 63) == f[80]);
-    // 10 LEDs behind: t = 255 * 30^2 / 40^2 = 143 — brighter than further back
-    TEST_ASSERT_TRUE(lerp(kSolid, kWhite, 143) == f[90]);
+    // 20 LEDs behind the head: halfway to the eye, t = 255 * (40-20) / 40
+    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kWhite, 127) == f[80]);
+    // 10 LEDs behind: t = 255 * 30 / 40 — brighter than further back
+    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kWhite, 191) == f[90]);
     TEST_ASSERT_TRUE_MESSAGE(kSolid == f[60], "the tail must end after COMET_TAIL pixels");
     TEST_ASSERT_TRUE_MESSAGE(kSolid == f[101], "nothing may light up ahead of the head");
 }
@@ -694,6 +698,18 @@ static void test_fade_alpha_ramps_in_and_out(void) {
     TEST_ASSERT_EQUAL_UINT8(255, fadeAlpha(90, 100, 10));
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(127, fadeAlpha(95, 100, 10), "no fade-out towards the end");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, fadeAlpha(100, 100, 10), "the last frame must be the plain base");
+}
+
+// A quarter of the way into a breath the cosine is at half its swing: the
+// eye must see the midpoint between full and the floor.
+static void test_breathe_curve_is_even_to_the_eye(void) {
+    Breathe fx;
+    Frame f;
+    EffectContext ctx{kMakeup, zeroRandom};
+    fx.begin(ctx);
+    for (int i = 0; i <= cfg::BREATHE_CYCLE_STEPS / 4; ++i) fx.step(f, ctx);  // renders step 50
+    const int midpoint = cfg::BREATHE_MIN_LEVEL + (255 - cfg::BREATHE_MIN_LEVEL) / 2;
+    TEST_ASSERT_INT_WITHIN_MESSAGE(2, midpoint, lightness8(f[0].w), "the breath is not even to the eye");
 }
 
 static void test_registry_names_roundtrip(void) {
@@ -766,13 +782,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_breathe_finishes_after_three_cycles);
     RUN_TEST(test_breathe_starts_full_and_dips_at_half_cycle);
     RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
+    RUN_TEST(test_breathe_curve_is_even_to_the_eye);
     RUN_TEST(test_embers_starts_and_ends_on_the_plain_base);
     RUN_TEST(test_embers_coal_dips_deep_with_soft_neighbours);
     RUN_TEST(test_embers_are_sparse_and_staggered);
     RUN_TEST(test_embers_move_smoothly_and_never_below_30_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
-    RUN_TEST(test_comet_head_is_white_with_a_quadratic_tail);
+    RUN_TEST(test_comet_head_is_white_with_a_tail_even_to_the_eye);
     RUN_TEST(test_comet_tail_falls_off_monotonically_and_wraps);
     RUN_TEST(test_comet_adds_light_in_makeup);
     RUN_TEST(test_registry_names_roundtrip);

@@ -1,5 +1,6 @@
 // Breathe (v1.2.0): the whole ring slowly dims to BREATHE_MIN_LEVEL and back,
-// BREATHE_CYCLES times — a calm "breathing" effect over the current base.
+// BREATHE_CYCLES times — a calm "breathing" effect over the current base. The
+// cosine runs in perceived brightness (CIE 1931, v1.3.0).
 #pragma once
 
 #include <cstdint>

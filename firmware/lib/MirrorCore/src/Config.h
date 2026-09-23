@@ -37,7 +37,7 @@ constexpr uint32_t WAVE_STEP_MS = 45;
 constexpr uint32_t BREATHE_STEP_MS     = 20;
 constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
 constexpr uint8_t  BREATHE_CYCLES      = 3;
-constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 %
+constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 % to the eye (CIE 1931, v1.3.0)
 
 // --- Embers effect (v1.3.0) -------------------------------------------------
 // Sparse smouldering coals: every step a new coal lights with probability
@@ -59,7 +59,7 @@ constexpr uint8_t  EMBERS_NEIGHBOUR_SHARE = 128;  // neighbours dim to half the 
 constexpr uint8_t  EMBERS_MIN_GAP         = 3;
 
 // --- Comet effect (v1.2.0) --------------------------------------------------
-// A white head with a COMET_TAIL-pixel quadratic tail travels once around the
+// A white head with a COMET_TAIL-pixel tail (fading evenly to the eye, v1.3.0) travels once around the
 // ring (TOTAL_LEDS + COMET_TAIL steps), fading in and out over COMET_FADE_STEPS.
 constexpr uint32_t COMET_STEP_MS    = 30;
 constexpr uint16_t COMET_TAIL       = 40;

@@ -33,9 +33,11 @@ bool Comet::step(Frame& out, const EffectContext& ctx) {
             continue;
         }
         const uint16_t back = static_cast<uint16_t>(cfg::COMET_TAIL - dist);  // TAIL at the head, 1 at the end
-        const uint8_t t = static_cast<uint8_t>(255UL * back * back /
-                                               (cfg::COMET_TAIL * cfg::COMET_TAIL));
-        out[i] = lerp(ctx.base, kWhite, scale8(t, alpha));
+        // Linear in perceived brightness (CIE 1931, v1.3.0): the tail fades
+        // evenly to the eye; the quadratic PWM curve before was a hand-made
+        // approximation of the same thing.
+        const uint8_t t = static_cast<uint8_t>(255UL * back / cfg::COMET_TAIL);
+        out[i] = lerpPerceptual(ctx.base, kWhite, scale8(t, alpha));
     }
     ++step_;
     return step_ <= kTotalSteps;
