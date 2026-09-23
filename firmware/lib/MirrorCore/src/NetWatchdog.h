@@ -1,27 +1,37 @@
-// NetWatchdog — decides when a lost network warrants restarting the ESP
-// (v1.2.1). WiFi down for WATCHDOG_TIMEOUT_MS in total -> restart, as in v27,
-// because a wedged WiFi stack is what a reboot can fix. Two changes from v27:
-//   - the restart never happens while the mirror is lit — it waits until the
-//     mirror goes dark, so nobody gets the light switched off mid-use;
-//   - MQTT is not an input at all: a dead broker (HA updating for half an
-//     hour) is not fixed by rebooting, the network task just keeps
-//     reconnecting while the mirror works locally.
-// Downtime is measured between calls, so a flapping link is counted only for
-// the time it is really down. Pure logic, wraparound-safe.
+// NetWatchdog — what a lost network warrants (v1.2.1). Pure logic,
+// wraparound-safe, fed once per network-task pass.
+//
+//   - WiFi down for WATCHDOG_TIMEOUT_MS in total -> Restart the ESP, as in
+//     v27: a wedged WiFi stack is what a reboot can fix.
+//   - WiFi up, MQTT down for MQTT_DOWN_REJOIN_MS -> RejoinWifi, never a
+//     restart: a dead broker (HA updating for half an hour) is not fixed by
+//     rebooting, but a stale DHCP lease or an IP conflict after a router
+//     swap is fixed by re-joining the AP.
+//   - Either action waits until the mirror has been quiet (dark, no motion)
+//     for RESTART_QUIET_MS: nobody gets the light switched off mid-use, and a
+//     reboot right after the mirror went dark cannot wipe the 15 s PIR
+//     cooldown and relight it behind the person leaving.
+// Downtime is measured between calls, so a flapping link counts only for the
+// time it is really down.
 #pragma once
 
 #include <cstdint>
 
+enum class NetAction : uint8_t { None, Restart, RejoinWifi };
+
 class NetWatchdog {
 public:
-    // Call on every network-task pass (also after long blocking reconnects).
-    // Returns true when the device should restart now.
-    bool update(uint32_t now, bool wifiUp, bool lit);
+    // quiet: the mirror is dark and the PIR sees no motion.
+    NetAction update(uint32_t now, bool wifiUp, bool mqttUp, bool quiet);
 
-    uint32_t wifiDownMs() const { return downMs_; }
+    uint32_t wifiDownMs() const { return wifiDownMs_; }
+    uint32_t mqttDownMs() const { return mqttDownMs_; }
 
 private:
-    bool     started_ = false;
-    uint32_t lastMs_  = 0;
-    uint32_t downMs_  = 0;
+    bool     started_    = false;
+    uint32_t lastMs_     = 0;
+    uint32_t wifiDownMs_ = 0;
+    uint32_t mqttDownMs_ = 0;  // only while WiFi is up
+    bool     wasQuiet_   = false;
+    uint32_t quietMs_    = 0;
 };

@@ -213,15 +213,31 @@ void task(void*) {
             pending = true;
         }
 
-        // 1. Watchdog (NetWatchdog.h, v1.2.1): WiFi down for 5 min -> restart,
-        //    but only once the mirror is dark; an MQTT-only outage never
-        //    restarts. Evaluated before any `continue` below so a stuck WiFi
+        // 1. Watchdog (NetWatchdog.h, v1.2.1): WiFi down 5 min -> restart;
+        //    WiFi up but MQTT down 30 min -> re-join WiFi (never a restart).
+        //    Both wait until the mirror has been dark with no motion for
+        //    30 s. Evaluated before any `continue` below so a stuck WiFi
         //    reconnect loop still gets watchdogged.
-        if (netWatchdog.update(now, WiFi.status() == WL_CONNECTED, latest.on)) {
-            MLOG("[%lu] WDG: WiFi down %lu ms, mirror dark -> ESP.restart()\n",
-                 (unsigned long)now, (unsigned long)netWatchdog.wifiDownMs());
-            vTaskDelay(pdMS_TO_TICKS(100));  // let Serial flush
-            ESP.restart();
+        const bool quiet = !latest.on && !latest.pir;
+        switch (netWatchdog.update(now, WiFi.status() == WL_CONNECTED, mqtt.connected(), quiet)) {
+            case NetAction::Restart:
+                MLOG("[%lu] WDG: WiFi down %lu ms, mirror quiet -> ESP.restart()\n",
+                     (unsigned long)now, (unsigned long)netWatchdog.wifiDownMs());
+                vTaskDelay(pdMS_TO_TICKS(100));  // let Serial flush
+                ESP.restart();
+                break;
+            case NetAction::RejoinWifi:
+                // A stale lease or an IP conflict (router swap) keeps WiFi
+                // "connected" while nothing gets through; the WiFi-down
+                // branch below re-joins on the next pass.
+                MLOG("[%lu] WDG: MQTT down %lu ms with WiFi up -> re-join WiFi\n",
+                     (unsigned long)now, (unsigned long)netWatchdog.mqttDownMs());
+                mqtt.disconnect();
+                WiFi.disconnect();
+                vTaskDelay(pdMS_TO_TICKS(cfg::WIFI_ATTEMPT_DELAY_MS));
+                continue;
+            case NetAction::None:
+                break;
         }
 
         // 2. WiFi down: yellow, reconnect, WiFi.setSleep(false) once up.

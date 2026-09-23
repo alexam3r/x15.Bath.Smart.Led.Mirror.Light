@@ -142,8 +142,15 @@ constexpr uint8_t  DIM_MAX       = 255;
 constexpr uint32_t HOLD_STUCK_MS = 60UL * 1000;
 
 // --- Network ------------------------------------------------------------
-// WiFi down this long -> restart once the mirror is dark (NetWatchdog.h).
-constexpr uint32_t WATCHDOG_TIMEOUT_MS        = 5UL * 60 * 1000;  // 5 min
+// NetWatchdog.h: WiFi down this long -> restart; WiFi up but MQTT down this
+// long -> re-join WiFi. Both only after the mirror has been quiet (dark, no
+// motion) for RESTART_QUIET_MS — longer than slide-out + PIR cooldown +
+// blackout, so a reboot never relights the mirror behind someone leaving.
+constexpr uint32_t WATCHDOG_TIMEOUT_MS        = 5UL * 60 * 1000;   // 5 min
+constexpr uint32_t MQTT_DOWN_REJOIN_MS        = 30UL * 60 * 1000;  // 30 min
+constexpr uint32_t RESTART_QUIET_MS           = 30UL * 1000;       // 30 s
+static_assert(RESTART_QUIET_MS > (SLIDE_MAX_RADIUS + 2) * SLIDE_STEP_MS + PIR_COOLDOWN_MS + PIR_BLACKOUT_MS,
+              "a reboot must not come before the slide-out, the PIR cooldown and the blackout are over");
 constexpr uint32_t TELEMETRY_PERIOD_MS        = 10UL * 1000;      // 10 s
 constexpr uint32_t PUBLISH_MIN_INTERVAL_MS    = 250;
 constexpr uint16_t MQTT_BUFFER_SIZE           = 512;
