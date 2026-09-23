@@ -114,7 +114,7 @@ constexpr uint32_t PIR_STUCK_MS       = 60UL * 60 * 1000;  // 60 min
 // WARN_DIM_LEVEL over WARN_FADE_IN_MS; any activity ramps it back over
 // WARN_FADE_OUT_MS and restarts the auto-off timer.
 constexpr uint32_t AUTO_OFF_WARN_MS = 60UL * 1000;  // 1 min
-constexpr uint8_t  WARN_DIM_LEVEL   = 128;          // 50 %
+constexpr uint8_t  WARN_DIM_LEVEL   = 128;          // 50 % to the eye (CIE 1931, v1.3.0) = ~18 % PWM
 constexpr uint32_t WARN_FADE_IN_MS  = 2000;
 constexpr uint32_t WARN_FADE_OUT_MS = 1000;
 

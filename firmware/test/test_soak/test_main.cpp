@@ -637,11 +637,12 @@ private:
                         m_.shownColor_.g, m_.shownColor_.b, m_.shownColor_.w, m_.shownBrightness_, target.r, target.g,
                         target.b, target.w, s.brightness);
 
-        // --- A quiet ON frame is the plain base at brightness x warn level.
+        // --- A quiet ON frame is the plain base at brightness x warn level
+        // (the warn level is perceived brightness, CIE 1931, v1.3.0).
         if (p == PowerState::On && m_.effect_ == EffectId::None && !m_.trans_.active && !m_.warn_.active &&
             !m_.glitch_.active()) {
             const uint8_t level = m_.warning_ ? cfg::WARN_DIM_LEVEL : 255;
-            const Rgbw want = scale(target, scale8(s.brightness, level));
+            const Rgbw want = scale(target, scale8(s.brightness, cie8(level)));
             for (uint16_t i = 0; i < Frame::kSize; ++i) {
                 if (!(shown_[i] == want))
                     return fail("static frame px %u = %u,%u,%u,%u, expected %u,%u,%u,%u", i, shown_[i].r, shown_[i].g,

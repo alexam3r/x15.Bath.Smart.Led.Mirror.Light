@@ -1520,8 +1520,10 @@ static void test_color_command_transitions_over_500ms(void) {
     run(m, now, cfg::TRANSITION_MS / 2);
     const Rgbw mid = m.frame()[0];
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), mid), "transition frame is not uniform");
-    TEST_ASSERT_TRUE_MESSAGE(channelBetween(mid.r, 110, 145), "red did not fade halfway at 250 ms");
-    TEST_ASSERT_TRUE_MESSAGE(channelBetween(mid.b, 130, 170), "blue did not rise halfway at 250 ms");
+    // Halfway to the eye (CIE 1931, v1.3.0), which is ~20 % PWM, not 50 %.
+    TEST_ASSERT_TRUE_MESSAGE(channelBetween(lightness8(mid.r), 115, 145), "red did not fade halfway (to the eye) at 250 ms");
+    // blue rises from 50 (lightness 131) to 255: halfway to the eye is ~190.
+    TEST_ASSERT_TRUE_MESSAGE(channelBetween(lightness8(mid.b), 180, 200), "blue did not rise halfway (to the eye) at 250 ms");
     run(m, now, cfg::TRANSITION_MS / 2 + 50);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), Rgbw{0, 0, 255, 0}));
 }
@@ -1535,7 +1537,8 @@ static void test_brightness_command_transitions(void) {
     m.apply(lightBrightness(55), now);
     TEST_ASSERT_EQUAL_UINT8(55, m.snapshot().brightness);
     run(m, now, cfg::TRANSITION_MS / 2);
-    TEST_ASSERT_TRUE(channelBetween(m.frame()[0].r, scale8(255, 140), scale8(255, 170)));
+    // Halfway between full and 55 to the eye: lightness8(55) = 137 -> ~196.
+    TEST_ASSERT_TRUE(channelBetween(lightness8(m.frame()[0].r), 186, 206));
     run(m, now, cfg::TRANSITION_MS / 2 + 50);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, 55)));
 }
@@ -1549,8 +1552,8 @@ static void test_makeup_toggle_transitions(void) {
     m.onButton(click(2), now);  // solid -> makeup
     run(m, now, cfg::TRANSITION_MS / 2);
     const Rgbw mid = m.frame()[0];
-    TEST_ASSERT_TRUE(channelBetween(mid.r, 110, 145));
-    TEST_ASSERT_TRUE(channelBetween(mid.w, 110, 145));
+    TEST_ASSERT_TRUE(channelBetween(lightness8(mid.r), 115, 145));  // halfway to the eye
+    TEST_ASSERT_TRUE(channelBetween(lightness8(mid.w), 110, 140));
     run(m, now, cfg::TRANSITION_MS / 2 + 50);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 }
@@ -1638,7 +1641,7 @@ static void test_warning_dims_to_half_one_minute_before_auto_off(void) {
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS - 10 - now);
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "dimmed too early");
     run(m, now, 10 + cfg::WARN_FADE_IN_MS + 100);
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)),
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL))),
                              "not dimmed to 50 % two seconds into the warning");
     TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, m.snapshot().brightness);  // HA setting untouched
     TEST_ASSERT_TRUE(PowerState::On == m.power());
@@ -1682,7 +1685,7 @@ static void test_automation_off_during_warning_restores_brightness(void) {
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
-    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)));
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL))));
 
     m.apply(automationCmd(false), now);
     run(m, now, cfg::WARN_FADE_OUT_MS + 100);
@@ -1711,7 +1714,7 @@ static void test_warning_scales_a_running_effect(void) {
     TEST_ASSERT_TRUE_MESSAGE(EffectId::None != m.snapshot().effect, "no auto effect inside the warning minute");
     run(m, now, cfg::SNAKE_STEP_MS + 5);
     // Pixel 100 is far behind the head for the first steps -> plain base, dimmed.
-    TEST_ASSERT_TRUE(scale(kSolidDefault, cfg::WARN_DIM_LEVEL) == m.frame()[100]);
+    TEST_ASSERT_TRUE(scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL)) == m.frame()[100]);
 }
 
 // --- Makeup keeps the light for 45 minutes (v1.2.0) -------------------------
@@ -1745,7 +1748,7 @@ static void test_makeup_warning_comes_a_minute_before_its_own_limit(void) {
     run(m, now, cfg::AUTO_OFF_MAKEUP_MS - cfg::AUTO_OFF_WARN_MS - 10);
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor), "dimmed before the 44th minute");
     run(m, now, 10 + cfg::WARN_FADE_IN_MS + 100);
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kMakeupColor, cfg::WARN_DIM_LEVEL)),
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kMakeupColor, cie8(cfg::WARN_DIM_LEVEL))),
                              "no warning a minute before the makeup limit");
 }
 
@@ -1803,7 +1806,7 @@ static void test_ha_command_during_warning_restores_and_postpones(void) {
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
-    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)));
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL))));
 
     m.apply(lightBrightness(200), now);  // "Alice, mirror brightness 80 %"
     run(m, now, cfg::TRANSITION_MS + cfg::WARN_FADE_OUT_MS + 100);

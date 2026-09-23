@@ -74,7 +74,8 @@ void Mirror::retarget(uint32_t now, bool smooth) {
 
 // Every render ends here: brightness applied to the whole frame, frame flagged.
 void Mirror::finishFrame() {
-    frame_.scale(scale8(shownBrightness_, warnLevel_));
+    // warnLevel_ is perceived brightness (v1.3.0): 128 = half as bright to the eye.
+    frame_.scale(scale8(shownBrightness_, cie8(warnLevel_)));
     frameDirty_ = true;
 }
 
@@ -335,8 +336,9 @@ void Mirror::tick(uint32_t now) {
     if (trans_.active && (uint32_t)(now - lastTransStepMs_) >= cfg::TRANSITION_STEP_MS) {
         lastTransStepMs_ = now;
         const uint8_t t = trans_.value(now);  // retires itself at the end (t == 255)
-        shownColor_ = lerp(fromColor_, targetColor(), t);
-        shownBrightness_ = lerp8(fromBrightness_, brightness_, t);
+        // Even to the eye (CIE 1931, v1.3.0); exact at both ends.
+        shownColor_ = lerpPerceptual(fromColor_, targetColor(), t);
+        shownBrightness_ = lerp8Perceptual(fromBrightness_, brightness_, t);
         staticDirty_ = true;
     }
 
