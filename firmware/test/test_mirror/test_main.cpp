@@ -1918,6 +1918,47 @@ static void test_choosing_makeup_stops_a_running_effect(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 }
 
+// --- No glitch in the middle of a colour transition or a warning fade -------
+// Those redraw every 20 ms; a glitch due on a tick in between used to start
+// and be cut off by the next step — a 15..20 ms blip (v1.2.1).
+
+// Ticks (5 ms) until `until`; fails if any frame is not uniform.
+static void assertUniformUntil(Mirror& m, uint32_t& now, uint32_t until, const char* msg) {
+    while (now < until) {
+        now += 5;
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), m.frame()[0]), msg);
+    }
+}
+
+static void test_no_glitch_during_a_colour_transition(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    // The glitch is due at onAt + 45 s; start the fade 105 ms before, so the
+    // due tick falls between two 20 ms transition steps.
+    run(m, now, onAt + cfg::GLITCH_INTERVAL_MIN_MS - 105 - now);
+    m.apply(lightColor(0, 0, 255), now);
+    assertUniformUntil(m, now, now + cfg::TRANSITION_MS + 40, "a glitch flashed during the colour fade");
+}
+
+static void test_no_glitch_during_the_warning_fade(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    const uint32_t onAt = powerOnSettled(m, now);
+    // Glitches are due at onAt + k * 45 s. Place activity so the warning
+    // starts 1005 ms before the 19th one: it lands mid-fade, between steps.
+    const uint32_t glitchAt = onAt + 19 * cfg::GLITCH_INTERVAL_MIN_MS;
+    const uint32_t warningAt = glitchAt - 1005;
+    run(m, now, warningAt - (cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS) - 5 - now);
+    m.onPir(true, now);  // activity -> the warning starts 840 005 ms later
+    m.onPir(false, now);
+    run(m, now, warningAt - 10 - now);
+    assertUniformUntil(m, now, warningAt + cfg::WARN_FADE_IN_MS + 40, "a glitch flashed during the warning fade");
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -2014,5 +2055,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_pir_with_short_drops_is_not_stuck);
     RUN_TEST(test_choosing_solid_stops_a_running_effect);
     RUN_TEST(test_choosing_makeup_stops_a_running_effect);
+    RUN_TEST(test_no_glitch_during_a_colour_transition);
+    RUN_TEST(test_no_glitch_during_the_warning_fade);
     return UNITY_END();
 }

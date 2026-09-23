@@ -37,12 +37,14 @@ uint32_t Mirror::rollGlitchDelay() {
 }
 
 // The glitch only runs over a quiet, solid, lit mirror with automation on:
-// never in makeup, during an effect/slide/pending effect or while the
-// button is held.
+// never in makeup, during an effect/slide/pending effect, while the button
+// is held, or during a colour transition or warning fade (v1.2.1 — those
+// redraw every 20 ms, so a glitch started between two steps would be cut
+// off by the next one: a 15..20 ms blip).
 bool Mirror::glitchAllowed() const {
     return glitchEnabled_ && power_ == PowerState::On && effect_ == EffectId::None &&
            pending_ == EffectId::None && base_ == BaseMode::Solid && gate_.automationActive() &&
-           !holding_;
+           !holding_ && !trans_.active && !warn_.active;
 }
 
 // The colour the targets ask for; what is on screen is shownColor_.
