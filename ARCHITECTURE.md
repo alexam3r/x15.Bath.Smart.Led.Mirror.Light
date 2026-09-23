@@ -603,9 +603,13 @@ public:
 `state.effect` берёт имя из `effectName(id)`, `random` — из `randomEffect()` (Ruling R15).
 
 ```cpp
-// EffectId объявлен в Types.h: enum class EffectId : uint8_t { None = 0, Dark, Rainbow, Wave };
+// EffectId объявлен в Types.h:
+// enum class EffectId : uint8_t { None = 0, Dark, Rainbow, Wave, Breathe, Embers, Comet };
 
+static Breathe      s_breathe;
+static Comet        s_comet;
 static DarkSnake    s_dark;
+static Embers       s_embers;
 static RainbowSnake s_rainbow;
 static Wave         s_wave;
 
@@ -613,6 +617,9 @@ static const EffectEntry kEffects[] = {
     {EffectId::Dark,    "dark",    &s_dark},
     {EffectId::Rainbow, "rainbow", &s_rainbow},
     {EffectId::Wave,    "wave",    &s_wave},
+    {EffectId::Breathe, "breathe", &s_breathe},   // v1.2.0
+    {EffectId::Embers,  "embers",  &s_embers},    // v1.2.0, переделан в v1.3.0
+    {EffectId::Comet,   "comet",   &s_comet},     // v1.2.0 (candle убран в v1.3.0)
 };
 ```
 
@@ -696,9 +703,9 @@ firmware/
 // Types.h
 enum class PowerState : uint8_t { Off, SlideOn, On, SlideOff };
 enum class BaseMode   : uint8_t { Solid, Makeup };
-enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave };   // временные эффекты (см. kEffects[])
+enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave, Breathe, Embers, Comet };   // временные эффекты (см. kEffects[])
 enum class EffectRequest : uint8_t { None, Solid, Makeup, Random, Temporary };   // Temporary → effectId
-enum class CommandType   : uint8_t { Light, Automation, Makeup, NightMode, RandomEffect };
+enum class CommandType   : uint8_t { Light, Automation, Makeup, NightMode, RandomEffect, Glitch };
 
 struct LightCommand {                // значения уже зажаты Protocol в 0..255; -1 = поле отсутствует
     int8_t        state      = -1;   // -1 нет, 0 OFF, 1 ON
@@ -711,7 +718,7 @@ struct LightCommand {                // значения уже зажаты Pro
 struct Command {
     CommandType  type = CommandType::Light;
     LightCommand light;              // для Light
-    bool         flag = false;       // для Automation / Makeup / NightMode
+    bool         flag = false;       // для Automation / Makeup / NightMode / Glitch
 };
 
 struct StateSnapshot {
@@ -723,6 +730,8 @@ struct StateSnapshot {
     bool     automation = true;
     bool     nightMode = false;
     bool     pir = false;
+    bool     glitch = true;                  // глитч включён (v1.1.0)
+    EffectId lastEffect = EffectId::None;    // последний запущенный эффект, для diag (v1.2.2)
 };
 bool operator==(const StateSnapshot& a, const StateSnapshot& b);
 
@@ -778,7 +787,7 @@ public:
 };
 
 // Topics.h (Ruling R4: Route + routeTopic() live here, not in Protocol.h)
-enum class Route : uint8_t { Unknown, Light, Automation, Makeup, Effect, NightMode };
+enum class Route : uint8_t { Unknown, Light, Automation, Makeup, Effect, NightMode, Glitch };
 
 struct Topics {
     char set[96], setWildcard[96], state[96];
@@ -788,6 +797,8 @@ struct Topics {
     char nightModeSet[96], nightModeState[96];
     char pirState[96];
     char availability[96];
+    char glitchSet[96], glitchState[96];   // v1.1.0
+    char diag[96];                         // v1.2.0, только исходящий
     void init(const char* base);   // snprintf каждого поля; base без завершающего /
 };
 Route routeTopic(const char* topic, const char* base);
@@ -796,8 +807,17 @@ Route routeTopic(const char* topic, const char* base);
 bool   parseSwitch(const uint8_t* payload, size_t len, bool& out);
 bool   parseLight(const uint8_t* payload, size_t len, LightCommand& out);
 bool   toCommand(Route route, const uint8_t* payload, size_t len, Command& out);
-size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);   // 0 при нехватке буфера
-bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // любое поле, кроме pir
+// 0 при нехватке буфера или памяти (v1.2.1: doc.overflowed()); alloc — для тестов, nullptr = куча
+size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap, ArduinoJson::Allocator* alloc = nullptr);
+bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // любое поле, кроме pir и lastEffect
+
+struct DiagInfo {                     // v1.2.0, собирается только на Core 0 (§5.4)
+    uint32_t uptimeS; int8_t rssi; uint8_t resetReason;
+    uint32_t freeHeap, minFreeHeap, maxAllocHeap;   // maxAllocHeap — v1.2.1
+    EffectId lastEffect;                            // v1.2.2
+};
+const char* resetReasonName(uint8_t code);          // "POWERON", "SW", "PANIC", ... "UNKNOWN"
+size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap, ArduinoJson::Allocator* alloc = nullptr);
 ```
 
 ---
