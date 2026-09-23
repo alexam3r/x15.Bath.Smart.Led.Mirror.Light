@@ -116,7 +116,7 @@ void loop() {
 2. **WiFi** — при старте задачи: `WiFi.setHostname("SmartMirror")` вызывается **до** `WiFi.mode(WIFI_STA)`
    (Ruling R11) — на Arduino-ESP32 2.0.17 `setHostname()` только кладёт имя в локальный кэш, а в сетевой стек
    его передаёт `mode()`, причём лишь когда режим действительно меняется; в обратном порядке DHCP увидел бы
-   автосгенерированное `esp32s3-XXXXXX`. При потере связи: `disconnect()`/`begin()`, до 20 × 500 мс;
+   автосгенерированное `esp32s3-XXXXXX`. При потере связи: `disconnect()`/`begin()`, до 20 × 500 мс — кроме состояния `WL_IDLE_STATUS` (уже подключены к точке доступа и ждём адрес от DHCP): его не рвём, а ждём дальше (v1.2.1; после перезагрузки роутера DHCP бывает медленнее 10 с);
    после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
 3. **MQTT** — `setBufferSize(512)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
    LWT `<base>/availability = "offline"` (retain). После connect: подписка `<base>/set` и `<base>/+/set`,

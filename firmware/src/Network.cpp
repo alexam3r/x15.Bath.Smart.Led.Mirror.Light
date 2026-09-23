@@ -228,8 +228,16 @@ void task(void*) {
         if (WiFi.status() != WL_CONNECTED) {
             statusLed.set(100, 100, 0);
 
-            WiFi.disconnect();
-            WiFi.begin(WIFI_SSID, WIFI_PASS);
+            // WL_IDLE_STATUS = associated with the AP, waiting for a DHCP
+            // lease (Arduino-ESP32 2.0.17 sets it on STA_CONNECTED and
+            // LOST_IP). Don't tear that down: after a router reboot DHCP can
+            // take longer than one 10 s wait, and restarting the attempt
+            // every pass would cut it off each time. If the lease never
+            // comes, NetWatchdog (not WL_CONNECTED = down) still restarts.
+            if (WiFi.status() != WL_IDLE_STATUS) {
+                WiFi.disconnect();
+                WiFi.begin(WIFI_SSID, WIFI_PASS);
+            }
 
             uint8_t attempts = 0;
             while (WiFi.status() != WL_CONNECTED && attempts < cfg::WIFI_CONNECT_ATTEMPTS) {
