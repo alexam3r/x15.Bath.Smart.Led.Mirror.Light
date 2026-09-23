@@ -176,11 +176,13 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 base_ = BaseMode::Solid;
                 changed = true;
             }
-            if (lc.effect == EffectRequest::Solid) {
-                base_ = BaseMode::Solid;
-                changed = true;
-            } else if (lc.effect == EffectRequest::Makeup) {
-                base_ = BaseMode::Makeup;
+            if (lc.effect == EffectRequest::Solid || lc.effect == EffectRequest::Makeup) {
+                base_ = (lc.effect == EffectRequest::Solid) ? BaseMode::Solid : BaseMode::Makeup;
+                // Picking a base mode in the HA effect list ends a running
+                // or pending temporary effect (v1.2.1): otherwise a 20 s
+                // candle kept going and the list jumped back to "candle".
+                effect_ = EffectId::None;
+                pending_ = EffectId::None;
                 changed = true;
             }
             if (changed) retarget(now, true);  // a bare ON must not cut a running fade

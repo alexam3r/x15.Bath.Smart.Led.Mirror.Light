@@ -1888,6 +1888,36 @@ static void test_pir_with_short_drops_is_not_stuck(void) {
     TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "a busy PIR with short drops was treated as stuck");
 }
 
+// --- Choosing solid/makeup in HA stops a running effect (v1.2.1) --------------
+
+static void test_choosing_solid_stops_a_running_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Candle), now);
+    run(m, now, 200);
+    TEST_ASSERT_TRUE(EffectId::Candle == m.snapshot().effect);
+
+    m.apply(lightEffect(EffectRequest::Solid), now);  // picked "solid" in the HA effect list
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect, "the running effect kept going");
+    run(m, now, cfg::TRANSITION_MS + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
+}
+
+static void test_choosing_makeup_stops_a_running_effect(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
+    run(m, now, 200);
+    m.apply(lightEffect(EffectRequest::Makeup), now);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    run(m, now, cfg::TRANSITION_MS + 50);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -1982,5 +2012,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_stuck_pir_stops_holding_the_light_on);
     RUN_TEST(test_pir_works_again_after_going_low);
     RUN_TEST(test_pir_with_short_drops_is_not_stuck);
+    RUN_TEST(test_choosing_solid_stops_a_running_effect);
+    RUN_TEST(test_choosing_makeup_stops_a_running_effect);
     return UNITY_END();
 }
