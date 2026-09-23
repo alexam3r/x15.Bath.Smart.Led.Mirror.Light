@@ -27,16 +27,24 @@ static QueueHandle_t snapQueue = nullptr;
 static StateSnapshot lastSnapshot;
 
 void setup() {
+    // First thing: SK6812s keep their last frame across an ESP reset (network
+    // watchdog, panic, brownout), and their data lines float until begin().
+    // Clearing them here keeps a reboot from leaving the old frame — or noise
+    // picked up by the floating lines — on the ring for seconds.
+    leds.begin();
+
     Serial.begin(115200);
+#if DEBUG_LOG_ENABLED
+    // Wait for a USB host only when there is someone to read the logs; in
+    // the bathroom there is no USB host and the wait would just add 3 s.
     const uint32_t t0 = millis();
     while (!Serial && millis() - t0 < cfg::SERIAL_WAIT_MS) {}
+#endif
 
     Serial.printf("\n\n=== Smart Mirror v%s ===\n", cfg::FW_VERSION);
 
     pinMode(cfg::PIN_BUTTON, INPUT_PULLDOWN);
     pinMode(cfg::PIN_PIR, INPUT_PULLDOWN);
-
-    leds.begin();  // clears both strips
 
     cmdQueue  = xQueueCreate(cfg::CMD_QUEUE_LEN, sizeof(Command));
     snapQueue = xQueueCreate(1, sizeof(StateSnapshot));
