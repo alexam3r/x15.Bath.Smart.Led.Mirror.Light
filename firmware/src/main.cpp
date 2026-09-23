@@ -3,6 +3,7 @@
 // Network.cpp (WiFi/MQTT/watchdog). The two sides talk only through
 // cmdQueue and snapQueue; neither core touches the other's objects.
 #include <Arduino.h>
+#include <esp_attr.h>
 #include <esp_system.h>
 
 #include <freertos/FreeRTOS.h>
@@ -11,12 +12,19 @@
 #include "Button.h"
 #include "Config.h"
 #include "LedDriver.h"
+#include "Log.h"
 #include "Mirror.h"
 #include "Network.h"
+#include "PersistedFlags.h"
 #include "RmtLock.h"
 #include "Types.h"
 
 static uint32_t espRandom(uint32_t bound) { return bound ? esp_random() % bound : 0; }
+
+// Automation, night mode and glitch kept across software restarts (network
+// watchdog, panic, task watchdog, brownout) — RTC memory is not cleared by
+// those, and is not initialised at power-on (PersistedFlags.h validates it).
+RTC_NOINIT_ATTR static PersistedFlags rtcFlags;
 
 static Mirror    mirror(espRandom);
 static Button    button;
@@ -28,6 +36,26 @@ static QueueHandle_t snapQueue = nullptr;
 static StateSnapshot lastSnapshot;
 static bool          redrawPending = false;  // last show() lost the RMT lock: draw again
 static uint32_t      lastShowMs    = 0;      // last frame actually sent to the strips
+
+static void applyFlag(CommandType type, bool flag) {
+    Command c;
+    c.type = type;
+    c.flag = flag;
+    mirror.apply(c, millis());
+}
+
+// After a software restart, put back the switches HA/Node-RED had set: a
+// watchdog reboot at night must not turn motion_disable off and let the PIR
+// light the mirror. Only the non-default values need applying.
+static void restoreFlags() {
+    bool automation = true, nightMode = false, glitch = true;
+    if (!shouldRestoreFlags(static_cast<uint8_t>(esp_reset_reason()))) return;
+    if (!unpackFlags(rtcFlags, automation, nightMode, glitch)) return;
+    if (!automation) applyFlag(CommandType::Automation, false);
+    if (nightMode) applyFlag(CommandType::NightMode, true);
+    if (!glitch) applyFlag(CommandType::Glitch, false);
+    MLOG("restored after restart: automation=%d night=%d glitch=%d\n", (int)automation, (int)nightMode, (int)glitch);
+}
 
 void setup() {
     // First thing: SK6812s keep their last frame across an ESP reset (network
@@ -55,8 +83,10 @@ void setup() {
     snapQueue = xQueueCreate(1, sizeof(StateSnapshot));
 
     mirror.begin(millis());
+    restoreFlags();
 
     lastSnapshot = mirror.snapshot();
+    rtcFlags = packFlags(lastSnapshot.automation, lastSnapshot.nightMode, lastSnapshot.glitch);
     xQueueOverwrite(snapQueue, &lastSnapshot);
 
     network::start(cmdQueue, snapQueue);
@@ -95,6 +125,7 @@ void loop() {
     if (!(s == lastSnapshot)) {
         xQueueOverwrite(snapQueue, &s);
         lastSnapshot = s;
+        rtcFlags = packFlags(s.automation, s.nightMode, s.glitch);  // kept for a software restart
     }
 
     vTaskDelay(pdMS_TO_TICKS(cfg::LOOP_IDLE_DELAY_MS));  // 5 ms

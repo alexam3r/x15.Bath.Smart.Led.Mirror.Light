@@ -285,6 +285,12 @@ stateDiagram-v2
   предупреждения тоже возвращает яркость (иначе свет остался бы на 50 % навсегда). Затемнение действует и во
   время эффекта: `finishFrame()` умножает кадр на `scale8(shownBrightness_, warnLevel_)`. Цели `brightness`
   и `state` не меняются — HA видит прежние значения.
+- **Флаги переживают программную перезагрузку (v1.2.1).** `automation`, `nightMode` и `glitch` хранятся в
+  RTC-памяти (`RTC_NOINIT_ATTR`, запись `PersistedFlags` с магическим числом и контрольной суммой FNV-1a) и
+  восстанавливаются в `setup()` после сброса программой или сбоем — `SW` (сетевой watchdog), `PANIC`,
+  `INT_WDT`, `TASK_WDT`, `WDT`, `BROWNOUT`. После включения питания и кнопки сброса — умолчания, даже если
+  RTC-память случайно уцелела. Иначе ночная перезагрузка по watchdog снимала бы `motion_disable`, и PIR
+  зажигал бы зеркало. Цвет, яркость и режим по-прежнему сбрасываются при каждом выключении (решение владельца).
 - Все таймеры — через разность `now − start` (`uint32_t`), корректно переживают переполнение `millis()` (49,7 сут).
 
 ### 4.5 Команды (из MQTT) → действия
@@ -325,7 +331,7 @@ stateDiagram-v2
 - **Не влияет** на `state.effect`, таймеры автовыключения и автоэффекта, активность; в `effect_list`
   и `random` не входит — это не эффект реестра (§7), а отдельный слой `GlitchOverlay` (`effects/Glitch.h`),
   которым управляет `Mirror::tickGlitch()`.
-- Флаг `glitch` по умолчанию `true` и не сохраняется: после перезагрузки глитч снова включён (как `automation`).
+- Флаг `glitch` по умолчанию `true`. Как `automation` и `nightMode`, он переживает программную перезагрузку, но не отключение питания (§4.4, `PersistedFlags`).
 
 ---
 
@@ -347,7 +353,7 @@ stateDiagram-v2
 | `<base>/state` | out | JSON (5.3) | да | состояние светильника |
 | `<base>/motion/state` | out | `ON`/`OFF` | да | флаг `automation` |
 | `<base>/makeup/state` | out | `ON`/`OFF` | да | `base == Makeup` |
-| `<base>/motion_disable/state` | out | `ON`/`OFF` | **нет** | `nightMode` (после ребута всегда `OFF`) |
+| `<base>/motion_disable/state` | out | `ON`/`OFF` | **нет** | `nightMode` (после включения питания `OFF`; программную перезагрузку переживает, §4.4) |
 | `<base>/pir/state` | out | `ON`/`OFF` | да | **новый**: сырой уровень PIR (реальное движение) |
 | `<base>/availability` | out | `online`/`offline` | да | **новый**: LWT |
 | `<base>/glitch/state` | out | `ON`/`OFF` | да | флаг глитча (v1.1.0) |
