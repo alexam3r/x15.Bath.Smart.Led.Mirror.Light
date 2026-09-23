@@ -16,6 +16,47 @@ Rgbw lerp(Rgbw a, Rgbw b, uint8_t t) {
     return Rgbw{lerp8(a.r, b.r, t), lerp8(a.g, b.g, t), lerp8(a.b, b.b, t), lerp8(a.w, b.w, t)};
 }
 
+namespace {
+
+// Both CIE 1931 tables, computed at compile time (512 bytes of flash).
+struct CieTables {
+    uint8_t toPwm[256];
+    uint8_t toLightness[256];
+
+    constexpr CieTables() : toPwm{}, toLightness{} {
+        for (int p = 0; p < 256; ++p) {
+            const double l = p * 100.0 / 255.0;  // lightness, %
+            const double f = (l + 16.0) / 116.0;
+            const double y = (l <= 8.0) ? l / 903.3 : f * f * f;
+            toPwm[p] = static_cast<uint8_t>(y * 255.0 + 0.5);
+        }
+        int p = 0;
+        for (int x = 0; x < 256; ++x) {
+            while (toPwm[p] < x) ++p;  // toPwm[255] == 255 stops it
+            toLightness[x] = static_cast<uint8_t>(p);
+        }
+    }
+};
+
+constexpr CieTables kCie{};
+
+}  // namespace
+
+uint8_t cie8(uint8_t lightness) { return kCie.toPwm[lightness]; }
+
+uint8_t lightness8(uint8_t pwm) { return kCie.toLightness[pwm]; }
+
+uint8_t lerp8Perceptual(uint8_t a, uint8_t b, uint8_t t) {
+    if (t == 0) return a;
+    if (t == 255) return b;
+    return cie8(lerp8(lightness8(a), lightness8(b), t));
+}
+
+Rgbw lerpPerceptual(Rgbw a, Rgbw b, uint8_t t) {
+    return Rgbw{lerp8Perceptual(a.r, b.r, t), lerp8Perceptual(a.g, b.g, t), lerp8Perceptual(a.b, b.b, t),
+                lerp8Perceptual(a.w, b.w, t)};
+}
+
 Rgbw hsv(uint16_t hue) {
     // Bit-exact port of Adafruit_NeoPixel::ColorHSV(hue, sat, val) with
     // sat = 255, val = 255 hardcoded (the only path MirrorCore needs).
