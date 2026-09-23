@@ -1686,14 +1686,26 @@ static void test_automation_off_during_warning_restores_brightness(void) {
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "still dimmed after automation was switched off");
 }
 
+// Auto effect after 280 s of idle (and the dark snake, pixel 0, +1): the
+// auto effects then land at ~280 s, ~569 s and ~858 s — the last one inside
+// the warning minute (840..900 s). An effect started by a command would not
+// do: a command is activity and ends the warning (v1.2.1).
+static uint32_t autoEffectEvery280s(uint32_t bound) {
+    return bound == cfg::AUTO_EFFECT_MAX_MS - cfg::AUTO_EFFECT_MIN_MS ? 40000 : 0;
+}
+
 static void test_warning_scales_a_running_effect(void) {
-    Mirror m(zeroRandom);
+    Mirror m(autoEffectEvery280s);
     uint32_t now = 0;
     m.begin(now);
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
-    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 500 - now);
-    m.apply(randomEffectCmd(), now);  // zeroRandom: dark snake, head at 0 moving +1
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
+    while (m.snapshot().effect == EffectId::None && now < cfg::AUTO_OFF_MS) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None != m.snapshot().effect, "no auto effect inside the warning minute");
     run(m, now, cfg::SNAKE_STEP_MS + 5);
     // Pixel 100 is far behind the head for the first steps -> plain base, dimmed.
     TEST_ASSERT_TRUE(scale(kSolidDefault, cfg::WARN_DIM_LEVEL) == m.frame()[100]);
@@ -1775,6 +1787,49 @@ static void test_light_effect_solid_after_long_makeup_restarts_the_timer(void) {
     TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "JSON mode change did not count as activity");
     run(m, now, 60000 + 100 + kSlideMs);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
+}
+
+// --- Commands to a lit mirror count as activity (v1.2.1) ----------------------
+// Someone the PIR cannot see (in the shower) talking to Alice is still there:
+// a command must end the pre-auto-off warning and restart the timer.
+
+static void test_ha_command_during_warning_restores_and_postpones(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(glitchCmd(false), now);
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cfg::WARN_DIM_LEVEL)));
+
+    m.apply(lightBrightness(200), now);  // "Alice, mirror brightness 80 %"
+    run(m, now, cfg::TRANSITION_MS + cfg::WARN_FADE_OUT_MS + 100);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kSolidDefault, 200)),
+                             "a command did not end the warning");
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS - 5000);  // past the old auto-off moment
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "a command did not restart the auto-off timer");
+}
+
+static void test_effect_command_postpones_auto_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);  // activity at t = 0
+    run(m, now, 10UL * 60 * 1000 - now);
+    m.apply(randomEffectCmd(), now);  // the effect/set button in HA at 10 min
+    run(m, now, cfg::AUTO_OFF_MS - 60000);  // 24 min: off at 15 min without the fix
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "an effect command did not count as activity");
+}
+
+// The automatic effect every 4-5 min must NOT count, or the mirror would
+// never switch itself off.
+static void test_auto_effect_does_not_postpone_auto_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    run(m, now, cfg::AUTO_OFF_MS + kSlideMs + 1000 - now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "auto-effects kept the mirror on");
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -1865,5 +1920,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_leaving_makeup_restarts_the_idle_timer);
     RUN_TEST(test_click2_into_makeup_extends_the_limit);
     RUN_TEST(test_light_effect_solid_after_long_makeup_restarts_the_timer);
+    RUN_TEST(test_ha_command_during_warning_restores_and_postpones);
+    RUN_TEST(test_effect_command_postpones_auto_off);
+    RUN_TEST(test_auto_effect_does_not_postpone_auto_off);
     return UNITY_END();
 }

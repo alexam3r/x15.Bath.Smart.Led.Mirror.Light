@@ -39,6 +39,7 @@ private:
     uint32_t rollAutoEffectDelay();
     uint32_t rollGlitchDelay();
     bool glitchAllowed() const;
+    bool lit() const;  // SlideOn or On
     void tickGlitch(uint32_t now);
     void powerOn(uint32_t now);
     void powerOff(bool manual, uint32_t now);

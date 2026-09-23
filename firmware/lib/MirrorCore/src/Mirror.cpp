@@ -13,6 +13,8 @@ void Mirror::markActivity(uint32_t now) {
     if (warning_) endWarning(now);
 }
 
+bool Mirror::lit() const { return power_ == PowerState::SlideOn || power_ == PowerState::On; }
+
 // How long the mirror may stay idle before it switches itself off: makeup
 // gets AUTO_OFF_MAKEUP_MS, everything else AUTO_OFF_MS (v1.2.0).
 uint32_t Mirror::autoOffLimit() const {
@@ -55,8 +57,7 @@ Rgbw Mirror::baseColor() const { return shownColor_; }
 // the targets apply at once.
 void Mirror::retarget(uint32_t now, bool smooth) {
     const Rgbw target = targetColor();
-    const bool lit = (power_ == PowerState::On || power_ == PowerState::SlideOn);
-    if (smooth && lit && (!(target == shownColor_) || brightness_ != shownBrightness_)) {
+    if (smooth && lit() && (!(target == shownColor_) || brightness_ != shownBrightness_)) {
         fromColor_ = shownColor_;
         fromBrightness_ = shownBrightness_;
         trans_.start(0, 255, now, cfg::TRANSITION_MS);
@@ -162,7 +163,6 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
     switch (cmd.type) {
         case CommandType::Light: {
             const LightCommand& lc = cmd.light;
-            const BaseMode prevBase = base_;
             bool changed = false;
 
             if (lc.brightness >= 1) {
@@ -184,9 +184,6 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 changed = true;
             }
             if (changed) retarget(now, true);  // a bare ON must not cut a running fade
-            // The two modes have different auto-off limits, so switching mode
-            // restarts the idle timer instead of inheriting the old one.
-            if (base_ != prevBase) markActivity(now);
 
             if (lc.brightness == 0 || lc.state == 0) {
                 powerOff(true, now);
@@ -199,6 +196,10 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             } else if (lc.effect == EffectRequest::Random) {
                 startRandomEffect(now);
             }
+            // A command to a lit mirror is activity (v1.2.1): whoever sent it
+            // is there, even out of the PIR's sight. This also restarts the
+            // timer on a mode change, whose two modes have different limits.
+            if (lit()) markActivity(now);
             break;
         }
         case CommandType::Automation:
@@ -206,7 +207,6 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             if (cmd.flag) markActivity(now);  // R9: enabling automation never auto-offs instantly
             break;
         case CommandType::Makeup: {
-            const BaseMode prevBase = base_;
             if (cmd.flag) {
                 base_ = BaseMode::Makeup;
                 if (power_ == PowerState::Off || power_ == PowerState::SlideOff) powerOn(now);
@@ -214,7 +214,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 base_ = BaseMode::Solid;
             }
             retarget(now, true);  // after a power-on from OFF this only marks the frame
-            if (base_ != prevBase) markActivity(now);  // mode change restarts the idle timer
+            if (lit()) markActivity(now);  // a command to a lit mirror is activity
             break;
         }
         case CommandType::NightMode:
@@ -229,6 +229,7 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
             break;
         case CommandType::RandomEffect:
             startRandomEffect(now);
+            if (lit()) markActivity(now);  // the HA button; automatic effects do not count
             break;
         case CommandType::Glitch:
             glitchEnabled_ = cmd.flag;

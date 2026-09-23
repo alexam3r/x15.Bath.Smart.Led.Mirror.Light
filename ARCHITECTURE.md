@@ -257,6 +257,10 @@ stateDiagram-v2
 - **Автовключение:** `pir == HIGH && power == OFF && automation && !nightMode && !cooldown.running(now) && !blackout.running(now)` → `powerOn()`.
   Срабатывание по **уровню** (как фактически работает v27), не по фронту.
 - **Активность:** `pir == HIGH && power ∈ {SLIDE_ON, ON}` → `lastActivity = lastIdle = now` (независимо от `automation`).
+- **Команда при горящем зеркале — тоже активность (v1.2.1):** любая команда `set` (яркость, цвет, режим,
+  эффект), `makeup/set` и `effect/set`, пришедшая при `power ∈ {SLIDE_ON, ON}`, вызывает `markActivity` —
+  тот, кто её отправил, в ванной, даже если PIR его не видит (душ). Она же снимает предупреждающее затухание.
+  Автоэффект по таймеру активностью **не** считается, иначе зеркало не гасло бы никогда.
 - **`motion/set ON` также отмечает активность** (`lastActivity = lastIdle = now`) — иначе повторное включение
   автоматики после длительного простоя тут же вызвало бы автовыключение (Ruling R9).
 - **Автовыключение:** `power == ON && automation && !nightMode && now − lastActivity > autoOffLimit()` → `powerOff(manual=false)`.
