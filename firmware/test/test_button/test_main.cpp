@@ -31,6 +31,15 @@ uint32_t poll(Button& btn, bool pressed, uint32_t from, uint32_t to, uint32_t st
     return t;
 }
 
+// A button as after a normal boot: its first sample (at `at`) saw it
+// released. The very first sample only sets the baseline (v1.2.1), so tests
+// that start with a press need this first.
+Button releasedButton(uint32_t at) {
+    Button btn;
+    btn.update(false, at);
+    return btn;
+}
+
 void assertType(ButtonEventType expected, ButtonEventType actual) {
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(expected), static_cast<uint8_t>(actual));
 }
@@ -40,7 +49,7 @@ void assertType(ButtonEventType expected, ButtonEventType actual) {
 // --- Clicks -----------------------------------------------------------------
 
 static void test_single_click_after_400ms(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Press edge at t=0, short press (~80ms), release edge at t=80.
@@ -60,7 +69,7 @@ static void test_single_click_after_400ms(void) {
 }
 
 static void test_double_click(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Click #1: press 0-75, release at 80 (clickCount=1, lastRelease=80).
@@ -84,7 +93,7 @@ static void test_double_click(void) {
 }
 
 static void test_triple_click(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Click #1
@@ -114,7 +123,7 @@ static void test_triple_click(void) {
 }
 
 static void test_clicks_separated_by_gap_are_separate(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Click #1: press 0-75, release at 80, resolves at release+400=480.
@@ -140,7 +149,7 @@ static void test_clicks_separated_by_gap_are_separate(void) {
 // --- Hold -------------------------------------------------------------------
 
 static void test_hold_start_at_500ms(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     btn.update(true, 0);  // press edge
 
     ButtonEvent at500 = btn.update(true, 500);
@@ -151,7 +160,7 @@ static void test_hold_start_at_500ms(void) {
 }
 
 static void test_hold_ticks_every_30ms(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     poll(btn, true, 0, 500, 5, &events);
@@ -171,7 +180,7 @@ static void test_hold_ticks_every_30ms(void) {
 }
 
 static void test_hold_release_does_not_click(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Hold for 800ms (crosses HoldStart and several HoldTicks).
@@ -191,7 +200,7 @@ static void test_hold_release_does_not_click(void) {
 }
 
 static void test_click_after_hold_counts_from_one(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
 
     // Hold, then release -> HoldEnd, clickCount reset to 0.
@@ -219,7 +228,7 @@ static void test_works_across_millis_wraparound(void) {
     std::vector<ButtonEvent> events;
 
     // Click scenario, resolving after the wraparound.
-    Button clickBtn;
+    Button clickBtn = releasedButton(base);
     poll(clickBtn, true, base + 0, base + 75, 5, &events);
     clickBtn.update(false, base + 80);
     poll(clickBtn, false, base + 85, base + 480, 5, &events);
@@ -231,7 +240,7 @@ static void test_works_across_millis_wraparound(void) {
     events.clear();
 
     // Hold scenario, HoldStart/HoldTick/HoldEnd all resolving after the wrap.
-    Button holdBtn;
+    Button holdBtn = releasedButton(base);
     poll(holdBtn, true, base + 0, base + 500, 5, &events);
     TEST_ASSERT_EQUAL_INT(0, (int)events.size());
     ButtonEvent holdStart = holdBtn.update(true, base + 505);  // crosses the wrap
@@ -255,7 +264,7 @@ static void test_works_across_millis_wraparound(void) {
 // "activity"), until the button is released.
 
 static void test_hold_stops_ticking_after_the_stuck_limit(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     std::vector<ButtonEvent> events;
     poll(btn, true, 0, cfg::HOLD_STUCK_MS - 1000, 5, &events);
     TEST_ASSERT_TRUE_MESSAGE(events.size() > 100, "a normal long hold must keep ticking");
@@ -278,13 +287,36 @@ static void test_hold_stops_ticking_after_the_stuck_limit(void) {
 // A hold longer than 49.7 days must not start ticking again when the
 // elapsed-time difference wraps around.
 static void test_stuck_hold_stays_quiet_across_wraparound(void) {
-    Button btn;
+    Button btn = releasedButton(0);
     poll(btn, true, 0, cfg::HOLD_STUCK_MS + 1000, 5, nullptr);  // stuck now
     std::vector<ButtonEvent> events;
     // Jump to just past one full wrap of the press start (difference ~0 again).
     poll(btn, true, 0xFFFFFFFFu - 995, 0xFFFFFFFFu, 5, &events);
     poll(btn, true, 4, 2004, 5, &events);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)events.size(), "ticking resumed after the wrap");
+}
+
+// --- Pressed at boot (v1.2.1) -------------------------------------------------
+// A level that is already HIGH at the very first sample is not a press: after
+// a reboot a stuck button would otherwise act as a fresh hold every time (and
+// e.g. clear a night mode restored from RTC memory). It counts only after it
+// has been seen released.
+
+static void test_button_pressed_at_boot_is_ignored_until_released(void) {
+    Button btn;
+    std::vector<ButtonEvent> events;
+    poll(btn, true, 0, 5000, 5, &events);  // HIGH from the first sample on
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)events.size(), "a button held since boot acted as a press");
+
+    const ButtonEvent rel = btn.update(false, 5005);  // released: no HoldEnd, nothing was held
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ButtonEventType::None), static_cast<uint8_t>(rel.type));
+    poll(btn, false, 5010, 5500, 5, &events);
+    TEST_ASSERT_EQUAL_INT(0, (int)events.size());
+
+    // A real press afterwards works as usual.
+    poll(btn, true, 6000, 6600, 5, &events);
+    TEST_ASSERT_TRUE(events.size() >= 1);
+    assertType(ButtonEventType::HoldStart, events[0].type);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -300,5 +332,6 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_works_across_millis_wraparound);
     RUN_TEST(test_hold_stops_ticking_after_the_stuck_limit);
     RUN_TEST(test_stuck_hold_stays_quiet_across_wraparound);
+    RUN_TEST(test_button_pressed_at_boot_is_ignored_until_released);
     return UNITY_END();
 }

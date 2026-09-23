@@ -11,6 +11,21 @@
 ButtonEvent Button::update(bool pressed, uint32_t now) {
     ButtonEvent ev;
 
+    // A level already HIGH at the very first sample is not a press (v1.2.1):
+    // after a reboot a stuck button would otherwise act as a fresh hold every
+    // time — powering the mirror on, or clearing a night mode restored from
+    // RTC memory. It counts only once it has been seen released.
+    if (!started_) {
+        started_ = true;
+        heldAtBoot_ = pressed;
+        prevPressed_ = false;
+        if (pressed) return ev;
+    } else if (heldAtBoot_) {
+        if (pressed) return ev;
+        heldAtBoot_ = false;  // released: from now on a normal button
+        return ev;
+    }
+
     if (pressed && !prevPressed_) {
         // Press edge: start timing this press, not holding yet.
         prevPressed_ = true;

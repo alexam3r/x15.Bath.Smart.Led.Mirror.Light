@@ -19,6 +19,8 @@ public:
     ButtonEvent update(bool pressed, uint32_t now);
 
 private:
+    bool     started_     = false;  // the first sample only sets the baseline
+    bool     heldAtBoot_  = false;  // pressed at the first sample: ignored until released
     bool     prevPressed_ = false;
     uint32_t pressStart_  = 0;
     bool     holding_     = false;
