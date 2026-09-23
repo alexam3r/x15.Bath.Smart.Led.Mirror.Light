@@ -491,87 +491,126 @@ static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
     }
 }
 
-// --- Embers (v1.2.0): per-pixel smouldering between EMBERS_MIN_LEVEL and
-// full, ~20 s with a fade in and out. ---------------------------------------
+// --- Embers (v1.3.0): sparse smouldering coals ------------------------------
+// About one pixel in eight is a coal at any moment: it dims to 30..50 % (to
+// the eye) and back along a cosine over 1..2.5 s, its two neighbours to half
+// that depth, every coal on its own clock. Levels are perceived brightness
+// (CIE 1931); in makeup the white channel is the multiplier itself, so
+// lightness8(f[i].w) reads a pixel's perceived level directly.
 
-// Deterministic stand-in for esp_random: an LCG, so targets and indices vary
-// but the run is reproducible.
+// Deterministic stand-in for esp_random.
 static uint32_t s_lcg = 12345;
 static uint32_t lcgRandom(uint32_t bound) {
     s_lcg = s_lcg * 1103515245u + 12345u;
     return (s_lcg >> 16) % bound;
 }
 
-static void test_embers_finishes_after_its_steps_and_starts_on_base(void) {
+// Exactly one coal, at pixel 50, as deep and as short as allowed.
+static uint32_t s_spawnRolls = 0;
+static uint32_t oneCoalRandom(uint32_t bound) {
+    if (bound == 1000) return (s_spawnRolls++ == 0) ? 0 : 999;  // spawn once, never again
+    if (bound == cfg::TOTAL_LEDS) return 50;
+    return 0;  // deepest floor, shortest dip
+}
+
+static void test_embers_starts_and_ends_on_the_plain_base(void) {
+    s_lcg = 12345;
     Embers fx;
     Frame f;
-    EffectContext ctx{kSolid, zeroRandom};
+    EffectContext ctx{kSolid, lcgRandom};
     fx.begin(ctx);
     TEST_ASSERT_EQUAL_UINT16(cfg::EMBERS_STEP_MS, fx.stepIntervalMs());
-    TEST_ASSERT_TRUE(fx.step(f, ctx));  // step 0: alpha 0 -> plain base
-    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(kSolid == f[i]);
+    TEST_ASSERT_TRUE(fx.step(f, ctx));
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "not base at the start");
     int calls = 1;
     while (fx.step(f, ctx)) {
         ++calls;
-        TEST_ASSERT_TRUE_MESSAGE(calls < 1000, "embers did not finish");
+        TEST_ASSERT_TRUE_MESSAGE(calls < 2000, "embers did not finish");
     }
     TEST_ASSERT_EQUAL_INT(cfg::EMBERS_STEPS, calls + 1);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "a coal was still dimmed on the last frame");
+    }
 }
 
-// zeroRandom always picks pixel 0 and the lowest target, so exactly one pixel
-// cools down to EMBERS_MIN_LEVEL and the rest stay on the plain base.
-static void test_embers_only_retargeted_pixels_change(void) {
+static void test_embers_coal_dips_deep_with_soft_neighbours(void) {
+    s_spawnRolls = 0;
     Embers fx;
     Frame f;
-    EffectContext ctx{kSolid, zeroRandom};
+    EffectContext ctx{kMakeup, oneCoalRandom};
     fx.begin(ctx);
-    for (int i = 0; i <= cfg::EMBERS_FADE_STEPS; ++i) fx.step(f, ctx);  // past the fade-in
-    uint8_t prev = f[0].r;
-    for (int i = 0; i < 40; ++i) {
-        fx.step(f, ctx);
-        TEST_ASSERT_TRUE_MESSAGE(f[0].r <= prev, "pixel 0 did not cool down");
-        prev = f[0].r;
-        for (uint16_t k = 1; k < Frame::kSize; ++k) {
-            TEST_ASSERT_TRUE_MESSAGE(kSolid == f[k], "an untouched pixel left the base colour");
+    int minCentre = 255, minLeft = 255, minRight = 255;
+    bool rising = false;
+    int prevCentre = 255;
+    while (fx.step(f, ctx)) {
+        const int centre = lightness8(f[50].w);
+        if (centre > prevCentre) rising = true;
+        TEST_ASSERT_TRUE_MESSAGE(!(rising && centre < prevCentre), "the dip went down twice");
+        prevCentre = centre;
+        if (centre < minCentre) minCentre = centre;
+        if (lightness8(f[49].w) < minLeft) minLeft = lightness8(f[49].w);
+        if (lightness8(f[51].w) < minRight) minRight = lightness8(f[51].w);
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            if (i < 49 || i > 51) TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[i], "only the coal and its neighbours dim");
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cfg::EMBERS_MIN_LEVEL) == f[0], "pixel 0 did not reach 40 %");
+    TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::EMBERS_FLOOR_MIN, minCentre, "the coal did not reach its floor");
+    const int halfway = 255 - (255 - cfg::EMBERS_FLOOR_MIN) / 2;
+    TEST_ASSERT_INT_WITHIN_MESSAGE(4, halfway, minLeft, "the neighbours must dim to half the depth");
+    TEST_ASSERT_EQUAL_INT(minLeft, minRight);
+    TEST_ASSERT_TRUE(kMakeup == f[50]);  // back to base at the end
 }
 
-// In makeup the white channel equals the raw level, so the frame shows each
-// pixel's level directly: no jumps bigger than EMBERS_SLEW, never below the floor.
-static void test_embers_moves_by_at_most_slew_and_stays_in_range(void) {
-    s_lcg = 12345;
+// Not the whole ring and not a handful: roughly one coal per eight pixels,
+// each at its own phase.
+static void test_embers_are_sparse_and_staggered(void) {
+    s_lcg = 777;
     Embers fx;
     Frame f;
     EffectContext ctx{kMakeup, lcgRandom};
     fx.begin(ctx);
-    for (int i = 0; i <= cfg::EMBERS_FADE_STEPS; ++i) fx.step(f, ctx);  // full alpha from here
-    uint8_t prev[Frame::kSize];
-    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = f[i].w;
-    bool sawChange = false;
-    for (int step = 0; step < 200; ++step) {
+    for (int i = 0; i < 150; ++i) fx.step(f, ctx);  // past the ramp-up
+    long dimmedTotal = 0;
+    int samples = 0, maxDistinct = 0;
+    for (int step = 0; step < 300; ++step) {
         fx.step(f, ctx);
+        bool seen[256] = {false};
+        int dimmed = 0, distinct = 0;
         for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            const uint8_t now = f[i].w;
-            const int delta = static_cast<int>(now) - static_cast<int>(prev[i]);
-            TEST_ASSERT_TRUE_MESSAGE(delta <= cfg::EMBERS_SLEW && -delta <= cfg::EMBERS_SLEW,
-                                     "a pixel jumped by more than EMBERS_SLEW in one step");
-            TEST_ASSERT_TRUE_MESSAGE(now >= scale8(255, cfg::EMBERS_MIN_LEVEL), "pixel dropped below the floor");
-            TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, f[i].r, "makeup base must stay on the white channel");
-            if (delta != 0) sawChange = true;
-            prev[i] = now;
+            const uint8_t l = lightness8(f[i].w);
+            if (l < 255) {
+                ++dimmed;
+                if (!seen[l]) { seen[l] = true; ++distinct; }
+            }
+        }
+        TEST_ASSERT_TRUE_MESSAGE(dimmed <= 3 * cfg::EMBERS_MAX_COALS, "more pixels dimmed than coals allow");
+        dimmedTotal += dimmed;
+        ++samples;
+        if (distinct > maxDistinct) maxDistinct = distinct;
+    }
+    const long average = dimmedTotal / samples;
+    TEST_ASSERT_TRUE_MESSAGE(average >= 20, "too few coals: the effect is barely visible");
+    TEST_ASSERT_TRUE_MESSAGE(average <= 90, "too many coals: the whole ring dims");
+    TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 10, "the coals dim in step instead of on their own clocks");
+}
+
+static void test_embers_move_smoothly_and_never_below_30_percent(void) {
+    s_lcg = 4242;
+    Embers fx;
+    Frame f;
+    EffectContext ctx{kMakeup, lcgRandom};
+    fx.begin(ctx);
+    uint8_t prev[Frame::kSize];
+    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = 255;
+    while (fx.step(f, ctx)) {
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            const int l = lightness8(f[i].w);
+            TEST_ASSERT_TRUE_MESSAGE(l >= cfg::EMBERS_FLOOR_MIN - 1, "dipped below 30 %");
+            TEST_ASSERT_INT_WITHIN_MESSAGE(20, prev[i], l, "a coal jumped instead of fading");
+            TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
+            prev[i] = static_cast<uint8_t>(l);
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(sawChange, "nothing smouldered at all");
-    // EMBERS_CHANGES_PER_STEP pixels are retargeted every step, so after a few
-    // hundred steps practically the whole ring has left full brightness. With
-    // only a handful of retargets per step most pixels would still sit at 255.
-    uint16_t below = 0;
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        if (f[i].w < 255) ++below;
-    }
-    TEST_ASSERT_TRUE_MESSAGE(below >= Frame::kSize - 8, "too much of the ring never smouldered");
 }
 
 // --- Comet (v1.2.0): a white head with a quadratic tail flies one lap -------
@@ -657,14 +696,6 @@ static void test_fade_alpha_ramps_in_and_out(void) {
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, fadeAlpha(100, 100, 10), "the last frame must be the plain base");
 }
 
-static void test_slew_towards_caps_the_step(void) {
-    TEST_ASSERT_EQUAL_UINT8(108, slewTowards(100, 200, 8));
-    TEST_ASSERT_EQUAL_UINT8(92, slewTowards(100, 50, 8));
-    TEST_ASSERT_EQUAL_UINT8(100, slewTowards(100, 100, 8));
-    TEST_ASSERT_EQUAL_UINT8(103, slewTowards(100, 103, 8));  // gap smaller than the cap
-    TEST_ASSERT_EQUAL_UINT8(98, slewTowards(100, 98, 8));
-}
-
 static void test_registry_names_roundtrip(void) {
     const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe,
                             EffectId::Embers, EffectId::Comet};
@@ -735,11 +766,11 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_breathe_finishes_after_three_cycles);
     RUN_TEST(test_breathe_starts_full_and_dips_at_half_cycle);
     RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
-    RUN_TEST(test_embers_finishes_after_its_steps_and_starts_on_base);
-    RUN_TEST(test_embers_only_retargeted_pixels_change);
-    RUN_TEST(test_embers_moves_by_at_most_slew_and_stays_in_range);
+    RUN_TEST(test_embers_starts_and_ends_on_the_plain_base);
+    RUN_TEST(test_embers_coal_dips_deep_with_soft_neighbours);
+    RUN_TEST(test_embers_are_sparse_and_staggered);
+    RUN_TEST(test_embers_move_smoothly_and_never_below_30_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
-    RUN_TEST(test_slew_towards_caps_the_step);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
     RUN_TEST(test_comet_head_is_white_with_a_quadratic_tail);
     RUN_TEST(test_comet_tail_falls_off_monotonically_and_wraps);

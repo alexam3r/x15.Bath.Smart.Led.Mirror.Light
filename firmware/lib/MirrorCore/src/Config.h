@@ -39,16 +39,24 @@ constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
 constexpr uint8_t  BREATHE_CYCLES      = 3;
 constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 %
 
-// --- Embers effect (v1.2.0) -------------------------------------------------
-// Each pixel smoulders at its own level in [EMBERS_MIN_LEVEL, 255]: every step
-// EMBERS_CHANGES_PER_STEP random pixels get a new target and every pixel moves
-// towards its own by at most EMBERS_SLEW. ~20 s with a 2 s fade in and out.
-constexpr uint32_t EMBERS_STEP_MS          = 60;
-constexpr uint16_t EMBERS_STEPS            = 333;  // ~20 s
-constexpr uint16_t EMBERS_FADE_STEPS       = 33;   // ~2 s
-constexpr uint8_t  EMBERS_CHANGES_PER_STEP = 13;
-constexpr uint8_t  EMBERS_MIN_LEVEL        = 102;  // 40 %
-constexpr uint8_t  EMBERS_SLEW             = 6;
+// --- Embers effect (v1.3.0) -------------------------------------------------
+// Sparse smouldering coals: every step a new coal lights with probability
+// EMBERS_SPAWN_PER_MILLE (about one pixel in eight is a coal at any moment).
+// A coal dims its pixel to a random floor of EMBERS_FLOOR_MIN..MAX perceived
+// brightness and back along a cosine over EMBERS_DIP_MIN..MAX_STEPS, and its
+// two neighbours to EMBERS_NEIGHBOUR_SHARE of that depth. Coals start at
+// least EMBERS_MIN_GAP pixels apart; no new ones in the last
+// EMBERS_DIP_MAX_STEPS, so the effect dies down on its own. ~20 s.
+constexpr uint32_t EMBERS_STEP_MS         = 30;
+constexpr uint16_t EMBERS_STEPS           = 667;  // ~20 s
+constexpr uint8_t  EMBERS_MAX_COALS       = 24;
+constexpr uint16_t EMBERS_SPAWN_PER_MILLE = 350;
+constexpr uint8_t  EMBERS_FLOOR_MIN       = 77;   // 30 % to the eye
+constexpr uint8_t  EMBERS_FLOOR_MAX       = 128;  // 50 % to the eye
+constexpr uint8_t  EMBERS_DIP_MIN_STEPS   = 33;   // ~1 s
+constexpr uint8_t  EMBERS_DIP_MAX_STEPS   = 83;   // ~2.5 s
+constexpr uint8_t  EMBERS_NEIGHBOUR_SHARE = 128;  // neighbours dim to half the depth
+constexpr uint8_t  EMBERS_MIN_GAP         = 3;
 
 // --- Comet effect (v1.2.0) --------------------------------------------------
 // A white head with a COMET_TAIL-pixel quadratic tail travels once around the
