@@ -11,7 +11,9 @@
 class LedDriver {
 public:
     void begin();
-    void show(const Frame& f);  // no heap use
+    // Draws the frame on both strips under the RMT lock. False if the lock
+    // could not be taken in time — nothing was drawn, the caller retries.
+    bool show(const Frame& f);
 
 private:
     Adafruit_NeoPixel stripL_{cfg::LEDS_LEFT_CNT, cfg::PIN_LED_LEFT, NEO_GRBW + NEO_KHZ800};

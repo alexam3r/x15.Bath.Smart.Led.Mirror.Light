@@ -13,6 +13,7 @@
 #include "LedDriver.h"
 #include "Mirror.h"
 #include "Network.h"
+#include "RmtLock.h"
 #include "Types.h"
 
 static uint32_t espRandom(uint32_t bound) { return bound ? esp_random() % bound : 0; }
@@ -25,12 +26,15 @@ static QueueHandle_t cmdQueue  = nullptr;
 static QueueHandle_t snapQueue = nullptr;
 
 static StateSnapshot lastSnapshot;
+static bool          redrawPending = false;  // last show() lost the RMT lock: draw again
 
 void setup() {
     // First thing: SK6812s keep their last frame across an ESP reset (network
     // watchdog, panic, brownout), and their data lines float until begin().
     // Clearing them here keeps a reboot from leaving the old frame — or noise
-    // picked up by the floating lines — on the ring for seconds.
+    // picked up by the floating lines — on the ring for seconds. The RMT lock
+    // (shared with the status LED on Core 0) must exist before the first show().
+    if (!rmt_lock::init()) esp_restart();
     leds.begin();
 
     Serial.begin(115200);
@@ -69,7 +73,9 @@ void loop() {
     mirror.onPir(digitalRead(cfg::PIN_PIR) == HIGH, now);  // 3. PIR
     mirror.tick(now);                                      // 4. timers + animation step
 
-    if (mirror.takeFrameDirty()) leds.show(mirror.frame());  // 5. output (only if frame changed)
+    // 5. output: only when the frame changed, or when the last attempt lost
+    // the RMT lock to the status LED and drew nothing.
+    if (mirror.takeFrameDirty() || redrawPending) redrawPending = !leds.show(mirror.frame());
 
     StateSnapshot s = mirror.snapshot();  // 6. snapshot for the network
     if (!(s == lastSnapshot)) {

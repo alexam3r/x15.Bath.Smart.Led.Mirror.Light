@@ -164,6 +164,9 @@ static_assert(MQTT_SOCKET_TIMEOUT_S < TASK_WDT_TIMEOUT_S,
 // --- Runtime ------------------------------------------------------------
 constexpr uint8_t  CMD_QUEUE_LEN      = 8;
 constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
+// Longest wait for the RMT lock (RmtLock.h): a strip frame holds it ~7 ms,
+// the status LED well under 1 ms. On timeout the show is skipped and retried.
+constexpr uint32_t RMT_LOCK_TIMEOUT_MS = 50;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
