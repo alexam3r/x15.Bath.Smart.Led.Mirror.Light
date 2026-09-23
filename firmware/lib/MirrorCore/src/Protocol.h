@@ -38,6 +38,7 @@ struct DiagInfo {
     uint32_t freeHeap    = 0;
     uint32_t minFreeHeap = 0;
     uint32_t maxAllocHeap = 0;  // largest free block: shows fragmentation (v1.2.1)
+    EffectId lastEffect = EffectId::None;  // last effect that started (v1.2.2)
 };
 
 // "POWERON", "EXT", "SW", "PANIC", "INT_WDT", "TASK_WDT", "WDT",

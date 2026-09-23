@@ -58,6 +58,7 @@ private:
     BaseMode   base_   = BaseMode::Solid;
     EffectId   effect_  = EffectId::None;
     EffectId   pending_ = EffectId::None;
+    EffectId   lastEffect_ = EffectId::None;  // for diagnostics: kept after the effect ends
 
     uint8_t r_ = cfg::DEFAULT_R;
     uint8_t g_ = cfg::DEFAULT_G;

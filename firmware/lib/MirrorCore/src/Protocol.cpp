@@ -147,6 +147,8 @@ size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap, ArduinoJson::Allo
     doc["free_heap"]     = d.freeHeap;
     doc["min_free_heap"] = d.minFreeHeap;
     doc["max_alloc_heap"] = d.maxAllocHeap;
+    const char* lastEffect = effectName(d.lastEffect);  // nullptr for None
+    doc["last_effect"] = (lastEffect != nullptr) ? lastEffect : "none";
     doc["fw"]            = cfg::FW_VERSION;
     if (doc.overflowed()) return 0;  // out of memory: fields were dropped
     if (measureJson(doc) >= cap) return 0;
@@ -183,7 +185,8 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap, ArduinoJson
 }
 
 bool stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b) {
-    StateSnapshot aWithoutPir = a;
-    aWithoutPir.pir = b.pir;  // pir is not part of the state JSON
-    return !(aWithoutPir == b);
+    StateSnapshot aStateOnly = a;
+    aStateOnly.pir = b.pir;                // pir goes out on pir/state
+    aStateOnly.lastEffect = b.lastEffect;  // lastEffect goes out on diag
+    return !(aStateOnly == b);
 }

@@ -46,6 +46,7 @@ struct StateSnapshot {
     bool     nightMode = false;
     bool     pir = false;
     bool     glitch = true;  // glitch overlay enabled (v1.1.0)
+    EffectId lastEffect = EffectId::None;  // last effect that started; kept after it ends (diag, v1.2.2)
 };
 static_assert(std::is_trivially_copyable<StateSnapshot>::value,
               "StateSnapshot crosses snapQueue by memcpy");
@@ -59,5 +60,6 @@ inline bool operator==(const StateSnapshot& a, const StateSnapshot& b) {
            a.automation == b.automation &&
            a.nightMode == b.nightMode &&
            a.pir == b.pir &&
+           a.lastEffect == b.lastEffect &&
            a.glitch == b.glitch;
 }

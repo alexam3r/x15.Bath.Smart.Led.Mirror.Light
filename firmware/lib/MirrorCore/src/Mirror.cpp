@@ -131,6 +131,7 @@ void Mirror::startEffect(EffectId id, uint32_t now) {
 
     // On: replaces whatever is currently running.
     effect_ = id;
+    lastEffect_ = id;
     fx->begin(ctx());
     lastStepMs_ = now;
     lastIdle_ = now;
@@ -385,6 +386,7 @@ void Mirror::tick(uint32_t now) {
                     EffectId id = pending_;
                     pending_ = EffectId::None;
                     effect_ = id;
+                    lastEffect_ = id;
                     effectInstance(id)->begin(ctx());
                     lastStepMs_ = now;
                     lastIdle_ = now;
@@ -474,6 +476,7 @@ StateSnapshot Mirror::snapshot() const {
     s.nightMode = gate_.nightMode();
     s.pir = pir_;
     s.glitch = glitchEnabled_;
+    s.lastEffect = lastEffect_;
     return s;
 }
 

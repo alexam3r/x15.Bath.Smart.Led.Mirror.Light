@@ -1,5 +1,5 @@
 # ============================================================
-# BATH MIRROR — ESP32-S3 Zero (SK6812 RGBW), прошивка v1.2.1
+# BATH MIRROR — ESP32-S3 Zero (SK6812 RGBW), прошивка v1.2.2
 # ============================================================
 # MQTT-сущности умного зеркала ванной. Только ручной YAML — HA MQTT Discovery
 # прошивка не публикует.
@@ -198,6 +198,18 @@ mqtt:
       state_class: measurement
       entity_category: diagnostic
       icon: "mdi:memory"
+      device: *mirror_device
+
+    # Последний запущенный эффект (v1.2.2): приходит сразу при старте эффекта и
+    # остаётся после его окончания — чтобы понять, какой эффект только что был
+    # на зеркале. «Последнее изменение» сенсора в HA — время запуска.
+    - name: "Зеркало: последний эффект"
+      unique_id: mirror_last_effect
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.last_effect }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      entity_category: diagnostic
+      icon: "mdi:auto-fix"
       device: *mirror_device
 
     # Крупнейший свободный блок кучи (v1.2.1): если он со временем падает при

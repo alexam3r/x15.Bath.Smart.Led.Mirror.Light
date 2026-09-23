@@ -1959,6 +1959,51 @@ static void test_no_glitch_during_the_warning_fade(void) {
     assertUniformUntil(m, now, warningAt + cfg::WARN_FADE_IN_MS + 40, "a glitch flashed during the warning fade");
 }
 
+// --- Last started effect for diagnostics (v1.2.2) ------------------------------
+// So the owner can tell which effect was just on the mirror: the snapshot
+// keeps the last effect that actually started, after it has finished too.
+
+static void test_last_effect_is_reported_and_kept_after_it_ends(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().lastEffect);
+    powerOnSettled(m, now);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Embers), now);
+    TEST_ASSERT_TRUE(EffectId::Embers == m.snapshot().lastEffect);
+    run(m, now, 30000);  // embers is ~20 s
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Embers == m.snapshot().lastEffect, "forgotten once the effect ended");
+    m.onButton(click(1), now);  // off
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Embers == m.snapshot().lastEffect, "forgotten when the mirror went off");
+}
+
+static void test_last_effect_covers_auto_and_random_effects(void) {
+    Mirror m(zeroRandom);  // random -> Dark
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000 - now);  // the automatic one
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Breathe), now);
+    TEST_ASSERT_TRUE(EffectId::Breathe == m.snapshot().lastEffect);
+    m.apply(randomEffectCmd(), now);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
+}
+
+// A deferred effect counts when it really starts, not when it was asked for.
+static void test_last_effect_set_when_a_deferred_effect_starts(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);  // slide-on
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().lastEffect, "reported before it started");
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(EffectId::Comet == m.snapshot().lastEffect);
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -2057,5 +2102,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_choosing_makeup_stops_a_running_effect);
     RUN_TEST(test_no_glitch_during_a_colour_transition);
     RUN_TEST(test_no_glitch_during_the_warning_fade);
+    RUN_TEST(test_last_effect_is_reported_and_kept_after_it_ends);
+    RUN_TEST(test_last_effect_covers_auto_and_random_effects);
+    RUN_TEST(test_last_effect_set_when_a_deferred_effect_starts);
     return UNITY_END();
 }

@@ -373,7 +373,7 @@ static void test_state_json_matches_5_3(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"OFF\",\"brightness\":255,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"solid\","
-        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.2.1\","
+        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.2.2\","
         "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"OFF\"}",
         buf);
 }
@@ -398,7 +398,7 @@ static void test_state_json_running_effect_and_makeup(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"ON\",\"brightness\":128,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":10,\"g\":20,\"b\":30},\"effect\":\"rainbow\","
-        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.2.1\","
+        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.2.2\","
         "\"brightness_pct\":50,\"moveDetection\":\"OFF\",\"makeup\":\"ON\"}",
         buf);
 }
@@ -491,14 +491,29 @@ static void test_diag_json(void) {
     d.freeHeap = 231000;
     d.minFreeHeap = 198000;
     d.maxAllocHeap = 110592;
+    d.lastEffect = EffectId::Embers;
     char buf[cfg::DIAG_JSON_CAP];
     const size_t n = buildDiagJson(d, buf, sizeof(buf));
     TEST_ASSERT_TRUE(n > 0);
     TEST_ASSERT_EQUAL_STRING(
         "{\"uptime_s\":3723,\"rssi\":-61,\"reset_reason\":\"POWERON\","
-        "\"free_heap\":231000,\"min_free_heap\":198000,\"max_alloc_heap\":110592,\"fw\":\"1.2.1\"}",
+        "\"free_heap\":231000,\"min_free_heap\":198000,\"max_alloc_heap\":110592,"
+        "\"last_effect\":\"embers\",\"fw\":\"1.2.2\"}",
         buf);
     TEST_ASSERT_EQUAL_UINT32(n, strlen(buf));
+    // Nothing started since boot.
+    d.lastEffect = EffectId::None;
+    buildDiagJson(d, buf, sizeof(buf));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"last_effect\":\"none\""));
+}
+
+// last_effect lives in diag, not in state: a change of it alone must not
+// republish the JSON Light state (like pir, Ruling R16).
+static void test_state_json_differs_ignores_last_effect(void) {
+    StateSnapshot a, b;
+    b.lastEffect = EffectId::Comet;
+    TEST_ASSERT_FALSE(stateJsonDiffers(a, b));
+    TEST_ASSERT_FALSE(a == b);  // but the snapshot itself did change: Core 0 must see it
 }
 
 static void test_diag_json_worst_case_fits_the_cap(void) {
@@ -507,6 +522,7 @@ static void test_diag_json_worst_case_fits_the_cap(void) {
     d.rssi = -128;
     d.resetReason = 6;  // TASK_WDT, the longest name
     d.freeHeap = d.minFreeHeap = d.maxAllocHeap = 4294967295u;
+    d.lastEffect = EffectId::Rainbow;  // the longest effect name (7 letters, like breathe)
     char buf[cfg::DIAG_JSON_CAP];
     TEST_ASSERT_TRUE(buildDiagJson(d, buf, sizeof(buf)) > 0);
 }
@@ -581,6 +597,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_diag_topic_built_from_base);
     RUN_TEST(test_reset_reason_names);
     RUN_TEST(test_diag_json);
+    RUN_TEST(test_state_json_differs_ignores_last_effect);
     RUN_TEST(test_diag_json_worst_case_fits_the_cap);
     RUN_TEST(test_diag_json_zero_when_buffer_too_small);
     RUN_TEST(test_state_json_zero_when_memory_runs_out);

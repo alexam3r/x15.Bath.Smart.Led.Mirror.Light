@@ -64,6 +64,7 @@ bool lastGlitch     = false;
 uint32_t uptimeS        = 0;
 uint32_t lastUptimeTick = 0;
 uint32_t lastDiagPublish = 0;
+EffectId lastDiagEffect  = EffectId::None;  // last_effect as last published in diag
 
 // Resolves MQTT_SERVER (a hostname or an IP literal) with lwIP's
 // getaddrinfo(), which runs the lookup in the TCP/IP thread and waits for the
@@ -94,12 +95,13 @@ void publishDiag() {
     d.freeHeap    = ESP.getFreeHeap();
     d.minFreeHeap = ESP.getMinFreeHeap();
     d.maxAllocHeap = ESP.getMaxAllocHeap();
+    d.lastEffect  = latest.lastEffect;
     char buf[cfg::DIAG_JSON_CAP];
     if (buildDiagJson(d, buf, sizeof(buf)) == 0) {
         MLOG("diag json did not fit\n");
         return;
     }
-    mqtt.publish(topics.diag, buf, true);
+    if (mqtt.publish(topics.diag, buf, true)) lastDiagEffect = d.lastEffect;
 }
 
 // Publishes only `<base>/state` (retain). blink=true — only the 10 s
@@ -362,7 +364,10 @@ void task(void*) {
                 lastStatePublish = now;
             }
 
-            if ((uint32_t)(now - lastDiagPublish) >= cfg::DIAG_PERIOD_MS) {
+            // Once a minute, and at once when a new effect started (v1.2.2):
+            // the owner looks up which effect was just on the mirror.
+            if ((uint32_t)(now - lastDiagPublish) >= cfg::DIAG_PERIOD_MS ||
+                latest.lastEffect != lastDiagEffect) {
                 publishDiag();
                 lastDiagPublish = now;
             }
