@@ -146,7 +146,7 @@ sdkconfig следит только за задачей простоя ядра 
    его передаёт `mode()`, причём лишь когда режим действительно меняется; в обратном порядке DHCP увидел бы
    автосгенерированное `esp32s3-XXXXXX`. При потере связи: `disconnect()`/`begin()`, до 20 × 500 мс — кроме случая, когда мы уже подключены к точке доступа и ждём адрес от DHCP (биты `STA_CONNECTED_BIT` без `STA_HAS_IP_BIT`): такую попытку не рвём до 60 с (`WIFI_DHCP_WAIT_MAX_MS`, v1.2.1; после перезагрузки роутера DHCP бывает медленнее 10 с). По `WL_IDLE_STATUS` это не определить: ядро ставит его и после `LOST_IP`, когда связи с точкой доступа уже нет;
    после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
-3. **MQTT** — `setBufferSize(512)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
+3. **MQTT** — `setBufferSize(512)`, `setSocketTimeout(3)`, `setKeepAlive(15)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
    LWT `<base>/availability = "offline"` (retain). После connect: подписка `<base>/set` и `<base>/+/set`,
    публикация **всех** state-топиков из последнего снимка и `diag`, и только потом `availability = "online"`
    (v1.2.1: при появлении доступности HA показывает закешированное состояние до следующего сообщения, и
@@ -608,6 +608,8 @@ firmware/
 │       ├── Frame.{h,cpp}           # Frame[168], ringDist, mapVirtual
 │       ├── Countdown.h             # таймер на разности uint32_t (переживает переполнение millis)
 │       ├── Ramp.h                  # линейная интерполяция uint8_t по времени (переходы, v1.2.0)
+│       ├── NetWatchdog.{h,cpp}     # когда перезагружаться или переподключать WiFi (v1.2.1)
+│       ├── PersistedFlags.{h,cpp}  # флаги для RTC-памяти: упаковка, проверка, правило восстановления (v1.2.1)
 │       ├── Button.{h,cpp}          # уровень → ButtonEvent
 │       ├── MotionGate.{h,cpp}      # automation / nightMode / cooldown / blackout
 │       ├── effects/
@@ -624,6 +626,7 @@ firmware/
 │   ├── main.cpp                    # setup/loop, очереди, static-объекты Core 1
 │   ├── LedDriver.{h,cpp}           # 2 × Adafruit_NeoPixel, Frame → ленты
 │   ├── StatusLed.{h,cpp}           # WS2812 на GPIO 21 (Core 0)
+│   ├── RmtLock.{h,cpp}             # мьютекс вокруг каждого show() на обоих ядрах (v1.2.1)
 │   ├── Network.{h,cpp}             # NetworkTask: WiFi, MQTT, watchdog, публикация
 │   ├── secrets.h                   # локально, в .gitignore
 │   └── secrets.h.sample
@@ -635,13 +638,17 @@ firmware/
     ├── test_glitch/
     ├── test_ramp/
     ├── test_mirror/
-    └── test_protocol/
+    ├── test_protocol/
+    ├── test_netwatchdog/           # v1.2.1
+    ├── test_persist/               # v1.2.1
+    ├── test_smoke/
+    └── test_soak/                  # симуляция долгой работы (v1.2.1, §9.1)
 ```
 
 Правила зависимостей:
 - `lib/MirrorCore` **не включает** `Arduino.h`, `freertos/*`, `Adafruit_NeoPixel.h`, `WiFi.h`
   (единственное исключение — `Log.h` под `#ifdef ARDUINO`). Время приходит параметром `uint32_t now`.
-- `src/Network.cpp` включает только `Types.h`, `Topics.h`, `Protocol.h`, `Config.h`, `Log.h`, `StatusLed.h`, `secrets.h`.
+- `src/Network.cpp` включает только `Types.h`, `Topics.h`, `Protocol.h`, `Config.h`, `Log.h`, `NetWatchdog.h`, `StatusLed.h`, `secrets.h`.
   **Не включает** `Mirror.h`, `LedDriver.h`, `effects/*`.
 - `secrets.h` включается ровно в одну единицу трансляции (`Network.cpp`) и использует
   `constexpr const char X[] = "..."` — внутреннее связывание, никаких multiple definition.
@@ -780,7 +787,9 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
   2.0.17, и `toolchain-xtensa-esp32s3` 8.4.0), `adafruit/Adafruit NeoPixel @ 1.15.5`,
   `knolleary/PubSubClient @ 2.8.0`, `bblanchon/ArduinoJson @ 7.4.3`.
 
-`setup()` ждёт USB-CDC до `cfg::SERIAL_WAIT_MS` (3000 мс): `while (!Serial && millis() - t0 < SERIAL_WAIT_MS) {}`.
+`setup()` сначала гасит ленты (`leds.begin()`), и только в отладочной сборке (`DEBUG_LOG_ENABLED`) ждёт USB-CDC до
+`cfg::SERIAL_WAIT_MS` (3000 мс): `while (!Serial && millis() - t0 < SERIAL_WAIT_MS) {}` (v1.2.1; в ванной USB-хоста
+нет, и в прод-сборке ожидание лишь задерживало бы загрузку на 3 с).
 
 ### 9.1 Размер прошивки: v27 → v1.2.1
 
@@ -817,7 +826,7 @@ bool   stateJsonDiffers(const StateSnapshot& a, const StateSnapshot& b);  // л�
 |---|---|---|---|
 | 1 | `WiFi.setSleep(false)` после подключения | `network::task()` (`Network.cpp`), сразу после `WL_CONNECTED` в ветке WiFi-переподключения | аудит T8 (grep) |
 | 2 | Core 0 не трогает ленту | объекты Core 1 `static` в `main.cpp`; `Network.cpp` не включает `Mirror.h`/`LedDriver.h`; обмен только через очереди | аудит T8 (grep include-ов) |
-| 3 | USB-CDC флаги + ожидание Serial 3 с | `platformio.ini` + `setup()` | аудит T8 |
+| 3 | USB-CDC флаги + ожидание Serial 3 с (с v1.2.1 — только в отладочной сборке) | `platformio.ini` + `setup()` | аудит T8 |
 | 4 | Только синтаксис ArduinoJson v7 | `Protocol.cpp`: `JsonDocument`, `isNull()`, `to<JsonObject>()` | grep `containsKey\|StaticJsonDocument\|DynamicJsonDocument` = 0 |
 | 5 | Удержание не превращается в клик | `Button`: отпускание после `HoldStart` → `HoldEnd`, счётчик кликов обнулён | `test_button: hold_release_does_not_click` |
 | 6 | Волны не проходят сквозь друг друга | `Wave`: `max(darkCW, darkCCW) × fadeOut`, встреча на 84 | `test_effects: wave_meeting_point_not_darker_than_single_wave` |
