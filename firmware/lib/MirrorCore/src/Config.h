@@ -110,6 +110,9 @@ constexpr uint32_t AUTO_EFFECT_MIN_MS = 4UL * 60 * 1000;   // 4 min
 constexpr uint32_t AUTO_EFFECT_MAX_MS = 5UL * 60 * 1000;   // 5 min
 constexpr uint32_t PIR_COOLDOWN_MS    = 15UL * 1000;       // 15 s
 constexpr uint32_t PIR_BLACKOUT_MS    = 2UL * 1000;        // 2 s
+// A PIR HIGH without a break for this long is stuck: it stops counting as
+// activity and stops switching the mirror on until it goes LOW (v1.2.1).
+constexpr uint32_t PIR_STUCK_MS       = 60UL * 60 * 1000;  // 60 min
 
 // --- Pre-auto-off warning (v1.2.0) ------------------------------------------
 // AUTO_OFF_WARN_MS before auto-off the rendered brightness ramps down to

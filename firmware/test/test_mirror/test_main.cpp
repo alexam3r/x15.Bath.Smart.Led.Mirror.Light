@@ -1832,6 +1832,62 @@ static void test_auto_effect_does_not_postpone_auto_off(void) {
     TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "auto-effects kept the mirror on");
 }
 
+// --- Stuck PIR (v1.2.1) -------------------------------------------------------
+// A PIR stuck HIGH for over PIR_STUCK_MS stops counting as activity and stops
+// switching the mirror on, until it goes LOW. Its raw level still reaches HA.
+
+// Like run(), but feeds the PIR level on every 5 ms pass, as loop() does.
+static void runWithPir(Mirror& m, uint32_t& now, uint32_t ms, bool pir) {
+    const uint32_t end = now + ms;
+    while (now < end) {
+        now += 5;
+        m.onPir(pir, now);
+        m.tick(now);
+    }
+}
+
+static void test_stuck_pir_stops_holding_the_light_on(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    runWithPir(m, now, 10000, true);  // auto-on, then HIGH for good
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    runWithPir(m, now, cfg::PIR_STUCK_MS - 20000, true);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "a busy PIR must keep the light on");
+
+    runWithPir(m, now, 20000 + cfg::AUTO_OFF_MS + kSlideMs + 1000, true);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "a PIR stuck HIGH kept the mirror on forever");
+    TEST_ASSERT_TRUE_MESSAGE(m.snapshot().pir, "the raw PIR level must still be reported");
+    runWithPir(m, now, 30UL * 60 * 1000, true);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "a stuck PIR switched the mirror back on");
+}
+
+static void test_pir_works_again_after_going_low(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    runWithPir(m, now, cfg::PIR_STUCK_MS + cfg::AUTO_OFF_MS + kSlideMs + 10000, true);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+
+    runWithPir(m, now, 1000, false);  // the sensor recovers
+    runWithPir(m, now, 100, true);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOn == m.power() || PowerState::On == m.power(),
+                             "the PIR stayed ignored after it went LOW");
+}
+
+// A PIR that is HIGH most of the time but drops now and then is not stuck:
+// the limit counts from the last rising edge.
+static void test_pir_with_short_drops_is_not_stuck(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    for (int i = 0; i < 3; ++i) {
+        runWithPir(m, now, cfg::PIR_STUCK_MS - 60000, true);
+        runWithPir(m, now, 500, false);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "a busy PIR with short drops was treated as stuck");
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_begins_off);
@@ -1923,5 +1979,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_ha_command_during_warning_restores_and_postpones);
     RUN_TEST(test_effect_command_postpones_auto_off);
     RUN_TEST(test_auto_effect_does_not_postpone_auto_off);
+    RUN_TEST(test_stuck_pir_stops_holding_the_light_on);
+    RUN_TEST(test_pir_works_again_after_going_low);
+    RUN_TEST(test_pir_with_short_drops_is_not_stuck);
     return UNITY_END();
 }

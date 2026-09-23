@@ -96,6 +96,8 @@ private:
     uint32_t       nextGlitchMs_     = 0;
     uint32_t       lastGlitchStepMs_ = 0;
     bool           pir_ = false;
+    uint32_t       pirHighSince_ = 0;      // last PIR rising edge
+    bool           pirStuck_     = false;  // HIGH for over PIR_STUCK_MS: ignored until LOW
 
     Frame frame_;
     bool  frameDirty_  = false;

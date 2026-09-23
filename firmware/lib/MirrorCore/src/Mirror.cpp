@@ -300,17 +300,28 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
 void Mirror::onPir(bool level, uint32_t now) {
     if (level && !pir_) {
         MLOG("[%lu] PIR rising edge\n", (unsigned long)now);  // edge only: no per-loop spam
+        pirHighSince_ = now;
     }
-    pir_ = level;
-    if (level) {
-        if (power_ == PowerState::Off && gate_.canAutoOn(now)) {
-            powerOn(now);
-            MLOG("[%lu] PIR triggered POWER ON\n", (unsigned long)now);
-        }
-        if (power_ == PowerState::SlideOn || power_ == PowerState::On) {
-            markActivity(now);  // R9: regardless of automation
-        }
+    pir_ = level;  // the raw level is always reported (pir/state)
+    if (!level) {
+        pirStuck_ = false;
+        return;
     }
+    // HIGH without a break for over an hour is a stuck sensor, not a person:
+    // stop letting it hold the light on (or switch it back on) until it goes
+    // LOW. Latched, so the difference wrapping after 49.7 days changes nothing.
+    if (!pirStuck_ && (uint32_t)(now - pirHighSince_) > cfg::PIR_STUCK_MS) {
+        pirStuck_ = true;
+        MLOG("[%lu] PIR stuck HIGH for %lu min: ignored until LOW\n", (unsigned long)now,
+             (unsigned long)(cfg::PIR_STUCK_MS / 60000));
+    }
+    if (pirStuck_) return;
+
+    if (power_ == PowerState::Off && gate_.canAutoOn(now)) {
+        powerOn(now);
+        MLOG("[%lu] PIR triggered POWER ON\n", (unsigned long)now);
+    }
+    if (lit()) markActivity(now);  // R9: regardless of automation
 }
 
 void Mirror::tick(uint32_t now) {
