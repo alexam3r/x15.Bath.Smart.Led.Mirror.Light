@@ -6,6 +6,9 @@
 // function/rule added only after its test failed for the expected reason.
 #include <unity.h>
 
+#include <ArduinoJson.h>
+
+#include <cstdlib>
 #include <cstring>
 
 #include "Config.h"
@@ -503,6 +506,43 @@ static void test_diag_json_zero_when_buffer_too_small(void) {
     TEST_ASSERT_EQUAL_UINT32(0, buildDiagJson(d, small, sizeof(small)));
 }
 
+// --- Out of memory (v1.2.1) ----------------------------------------------------
+// ArduinoJson drops what it cannot allocate and would still serialise the
+// rest — e.g. "{}" — which would go out retained as <base>/state. The
+// builders must return 0 instead, like when the buffer is too small.
+
+// Lets the first `left` allocations succeed, then fails every one.
+struct FailAfter : ArduinoJson::Allocator {
+    int left;
+    explicit FailAfter(int n) : left(n) {}
+    void* allocate(size_t n) override { return (left-- > 0) ? malloc(n) : nullptr; }
+    void deallocate(void* p) override { free(p); }
+    void* reallocate(void* p, size_t n) override { return (left-- > 0) ? realloc(p, n) : nullptr; }
+};
+
+static void test_state_json_zero_when_memory_runs_out(void) {
+    StateSnapshot s;
+    char buf[cfg::STATE_JSON_CAP];
+    int needed = 0;  // allocations a full document needs
+    while (true) {
+        FailAfter a(needed);
+        if (buildStateJson(s, buf, sizeof(buf), &a) > 0) break;
+        ++needed;
+        TEST_ASSERT_TRUE(needed < 50);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(needed >= 1, "a document built with no memory at all was serialised");
+    FailAfter plenty(needed);
+    TEST_ASSERT_TRUE(buildStateJson(s, buf, sizeof(buf), &plenty) > 0);
+    TEST_ASSERT_EQUAL_STRING_LEN("{\"state\":\"OFF\"", buf, 14);  // the real thing, not a stub
+}
+
+static void test_diag_json_zero_when_memory_runs_out(void) {
+    DiagInfo d;
+    char buf[cfg::DIAG_JSON_CAP];
+    FailAfter none(0);
+    TEST_ASSERT_EQUAL_UINT32(0, buildDiagJson(d, buf, sizeof(buf), &none));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_topics_built_from_base);
@@ -531,5 +571,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_reset_reason_names);
     RUN_TEST(test_diag_json);
     RUN_TEST(test_diag_json_zero_when_buffer_too_small);
+    RUN_TEST(test_state_json_zero_when_memory_runs_out);
+    RUN_TEST(test_diag_json_zero_when_memory_runs_out);
     return UNITY_END();
 }

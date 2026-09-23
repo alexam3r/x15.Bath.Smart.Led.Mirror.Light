@@ -3,6 +3,8 @@
 // constraints). ArduinoJson v7 API only.
 #pragma once
 
+#include <ArduinoJson.h>
+
 #include <cstddef>
 #include <cstdint>
 
@@ -41,10 +43,11 @@ struct DiagInfo {
 // "DEEPSLEEP", "BROWNOUT", "SDIO"; "UNKNOWN" for anything else.
 const char* resetReasonName(uint8_t code);
 
-// Serialises DiagInfo; 0 if it does not fit `cap` (like buildStateJson).
-size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap);
+// Serialises DiagInfo; 0 if it does not fit `cap` or memory ran out (like
+// buildStateJson). `alloc` is for tests; nullptr = the default heap.
+size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap, ArduinoJson::Allocator* alloc = nullptr);
 
-size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap);
+size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap, ArduinoJson::Allocator* alloc = nullptr);
 
 // True if `a` and `b` would serialize to different `<base>/state` JSON, i.e.
 // any snapshot field except `pir` (which only goes to `<base>/pir/state`)

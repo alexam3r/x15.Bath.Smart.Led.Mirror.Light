@@ -133,20 +133,27 @@ const char* resetReasonName(uint8_t code) {
     }
 }
 
-size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap) {
-    JsonDocument doc;
+namespace {
+ArduinoJson::Allocator* heapOr(ArduinoJson::Allocator* alloc) {
+    return alloc != nullptr ? alloc : ArduinoJson::detail::DefaultAllocator::instance();
+}
+}  // namespace
+
+size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap, ArduinoJson::Allocator* alloc) {
+    JsonDocument doc(heapOr(alloc));
     doc["uptime_s"]      = d.uptimeS;
     doc["rssi"]          = d.rssi;
     doc["reset_reason"]  = resetReasonName(d.resetReason);
     doc["free_heap"]     = d.freeHeap;
     doc["min_free_heap"] = d.minFreeHeap;
     doc["fw"]            = cfg::FW_VERSION;
+    if (doc.overflowed()) return 0;  // out of memory: fields were dropped
     if (measureJson(doc) >= cap) return 0;
     return serializeJson(doc, buf, cap);
 }
 
-size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap) {
-    JsonDocument doc;
+size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap, ArduinoJson::Allocator* alloc) {
+    JsonDocument doc(heapOr(alloc));
     doc["state"] = s.on ? "ON" : "OFF";
     doc["brightness"] = s.brightness;
     doc["color_mode"] = "rgb";
@@ -167,6 +174,9 @@ size_t buildStateJson(const StateSnapshot& s, char* buf, size_t cap) {
     doc["moveDetection"] = s.automation ? "ON" : "OFF";  // legacy, == automation
     doc["makeup"] = (s.base == BaseMode::Makeup) ? "ON" : "OFF";
 
+    // Out of memory: ArduinoJson dropped fields and would still serialise
+    // the rest (e.g. "{}"), which would go out retained as <base>/state.
+    if (doc.overflowed()) return 0;
     if (measureJson(doc) >= cap) return 0;
     return serializeJson(doc, buf, cap);
 }
