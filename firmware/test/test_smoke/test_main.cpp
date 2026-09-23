@@ -15,7 +15,7 @@ static void test_native_pipeline_smoke(void) {
     TEST_ASSERT_EQUAL_INT(4, 2 + 2);
 }
 
-int main(int argc, char **argv) {
+int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_native_pipeline_smoke);
     return UNITY_END();
