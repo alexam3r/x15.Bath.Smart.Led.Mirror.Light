@@ -22,6 +22,7 @@ private:
     bool     prevPressed_ = false;
     uint32_t pressStart_  = 0;
     bool     holding_     = false;
+    bool     stuck_       = false;  // held past HOLD_STUCK_MS: no more ticks until release
     uint32_t lastTick_    = 0;
     uint8_t  clickCount_  = 0;
     uint32_t lastRelease_ = 0;

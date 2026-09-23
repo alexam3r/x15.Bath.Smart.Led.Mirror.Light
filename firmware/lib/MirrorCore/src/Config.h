@@ -134,6 +134,9 @@ constexpr uint32_t DIM_PERIOD_MS = 30;
 constexpr uint8_t  DIM_STEP      = 5;
 constexpr uint8_t  DIM_MIN       = 5;
 constexpr uint8_t  DIM_MAX       = 255;
+// A hold longer than this is a stuck button (moisture on the button or its
+// Schmitt trigger): it stops ticking until released (v1.2.1).
+constexpr uint32_t HOLD_STUCK_MS = 60UL * 1000;
 
 // --- Network ------------------------------------------------------------
 // WiFi down this long -> restart once the mirror is dark (NetWatchdog.h).

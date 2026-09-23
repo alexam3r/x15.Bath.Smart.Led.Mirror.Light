@@ -16,6 +16,7 @@ ButtonEvent Button::update(bool pressed, uint32_t now) {
         prevPressed_ = true;
         pressStart_  = now;
         holding_     = false;
+        stuck_       = false;
         return ev;
     }
 
@@ -47,7 +48,14 @@ ButtonEvent Button::update(bool pressed, uint32_t now) {
                 lastTick_   = now;
                 ev.type     = ButtonEventType::HoldStart;
             }
-        } else if ((uint32_t)(now - lastTick_) > cfg::DIM_PERIOD_MS) {
+        } else if (!stuck_ && (uint32_t)(now - pressStart_) > cfg::HOLD_STUCK_MS) {
+            // Nobody dims for a minute: the button is stuck (moisture).
+            // Stop ticking — no endless dimming, no endless "activity" that
+            // would keep the mirror on — until the level drops. Latched, so
+            // the elapsed-time difference wrapping after 49.7 days cannot
+            // bring the ticks back.
+            stuck_ = true;
+        } else if (!stuck_ && (uint32_t)(now - lastTick_) > cfg::DIM_PERIOD_MS) {
             lastTick_ = now;
             ev.type   = ButtonEventType::HoldTick;
         }

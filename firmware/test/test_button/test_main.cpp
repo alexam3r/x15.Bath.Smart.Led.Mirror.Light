@@ -249,6 +249,44 @@ static void test_works_across_millis_wraparound(void) {
     assertType(ButtonEventType::HoldEnd, releaseEv.type);
 }
 
+// --- Stuck button (v1.2.1) ----------------------------------------------------
+// Moisture on the button or its Schmitt trigger can hold the level HIGH for
+// good. Past HOLD_STUCK_MS the hold stops ticking (no more dimming, no more
+// "activity"), until the button is released.
+
+static void test_hold_stops_ticking_after_the_stuck_limit(void) {
+    Button btn;
+    std::vector<ButtonEvent> events;
+    poll(btn, true, 0, cfg::HOLD_STUCK_MS - 1000, 5, &events);
+    TEST_ASSERT_TRUE_MESSAGE(events.size() > 100, "a normal long hold must keep ticking");
+
+    events.clear();
+    poll(btn, true, cfg::HOLD_STUCK_MS + 100, cfg::HOLD_STUCK_MS + 10UL * 60 * 1000, 5, &events);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)events.size(), "a stuck button kept ticking");
+
+    // Release still ends the hold, and the button works normally again.
+    const ButtonEvent end = btn.update(false, cfg::HOLD_STUCK_MS + 10UL * 60 * 1000 + 5);
+    assertType(ButtonEventType::HoldEnd, end.type);
+    events.clear();
+    const uint32_t t0 = cfg::HOLD_STUCK_MS + 11UL * 60 * 1000;
+    poll(btn, true, t0, t0 + 600, 5, &events);
+    TEST_ASSERT_TRUE(events.size() >= 2);
+    assertType(ButtonEventType::HoldStart, events[0].type);
+    assertType(ButtonEventType::HoldTick, events.back().type);
+}
+
+// A hold longer than 49.7 days must not start ticking again when the
+// elapsed-time difference wraps around.
+static void test_stuck_hold_stays_quiet_across_wraparound(void) {
+    Button btn;
+    poll(btn, true, 0, cfg::HOLD_STUCK_MS + 1000, 5, nullptr);  // stuck now
+    std::vector<ButtonEvent> events;
+    // Jump to just past one full wrap of the press start (difference ~0 again).
+    poll(btn, true, 0xFFFFFFFFu - 995, 0xFFFFFFFFu, 5, &events);
+    poll(btn, true, 4, 2004, 5, &events);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, (int)events.size(), "ticking resumed after the wrap");
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
     RUN_TEST(test_single_click_after_400ms);
@@ -260,5 +298,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_hold_release_does_not_click);
     RUN_TEST(test_click_after_hold_counts_from_one);
     RUN_TEST(test_works_across_millis_wraparound);
+    RUN_TEST(test_hold_stops_ticking_after_the_stuck_limit);
+    RUN_TEST(test_stuck_hold_stays_quiet_across_wraparound);
     return UNITY_END();
 }
