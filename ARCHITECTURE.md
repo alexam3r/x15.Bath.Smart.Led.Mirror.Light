@@ -63,10 +63,13 @@ MCU: ESP32-S3 Zero, **Flash 4 MB**, USB-CDC. Разметка `default.csv` (б�
 | `Mirror`, `Button`, `LedDriver` (объекты `static` в `main.cpp`) | Core 1 | никто — они не видны из других единиц трансляции |
 | `stripL`, `stripR` (Adafruit_NeoPixel) | Core 1 (`LedDriver`) | никто |
 | WiFi, `PubSubClient`, `StatusLed` | Core 0 (`Network.cpp`) | никто |
+| периферия RMT (через Adafruit NeoPixel) | `LedDriver` (Core 1) и `StatusLed` (Core 0) по очереди | только под `RmtLock` (§3.5, v1.2.1) |
 | `cmdQueue` | пишет Core 0, читает Core 1 | — |
 | `snapQueue` (mailbox из 1 элемента) | пишет Core 1 (`xQueueOverwrite`), читает Core 0 | — |
 
-**Мьютексов и `volatile`-глобалов нет.** `Command` и `StateSnapshot` — POD-структуры, копируются очередью FreeRTOS по значению.
+**Общего состояния под мьютексом и `volatile`-глобалов нет.** `Command` и `StateSnapshot` — POD-структуры,
+копируются очередью FreeRTOS по значению. Единственный мьютекс — `RmtLock` (v1.2.1): он защищает не
+данные, а одну железку, модуль RMT, который оба ядра используют для вывода на светодиоды (§3.5).
 
 ### 3.2 Почему так (правило №2)
 
@@ -90,7 +93,11 @@ void loop() {
     mirror.onPir(digitalRead(PIN_PIR) == HIGH, now);                               // 3. PIR
     mirror.tick(now);                                                              // 4. таймеры + шаг анимации
 
-    if (mirror.takeFrameDirty()) leds.show(mirror.frame());                        // 5. вывод (только если кадр изменился)
+    // 5. вывод: кадр изменился, прошлый не взял RmtLock, или прошло FRAME_REFRESH_MS (v1.2.1)
+    if (mirror.takeFrameDirty() || redrawPending || refreshDue) {
+        if (leds.show(mirror.frame())) { redrawPending = false; lastShowMs = now; }
+        else { /* повтор на следующем проходе; блокировка занята > 2 с -> esp_restart() */ }
+    }
 
     StateSnapshot s = mirror.snapshot();                                           // 6. снимок для сети
     if (!(s == lastSnapshot)) { xQueueOverwrite(snapQueue, &s); lastSnapshot = s; }
@@ -101,7 +108,16 @@ void loop() {
 
 Бюджет кадра: вывод 168 LED × 32 бита × 1,25 мкс ≈ **6,7 мс** (обе ленты последовательно).
 Тик цикла ≈ 5 мс + работа. Кадры выводятся только когда изменились: slide — шаг 33 мс (с v1.0.1; в v27 — 28 мс),
-змейка — 40 мс, волна — 45 мс (≈30/25/22 FPS). В статике лента не перерисовывается вовсе.
+змейка — 40 мс, волна — 45 мс (≈30/25/22 FPS). В статике кадр переотправляется раз в `FRAME_REFRESH_MS` = 2 с
+(v1.2.1): SK6812 держат то, что последним защёлкнули, и кадр, испорченный помехой, иначе оставался бы до
+следующего изменения — на тёмном зеркале хоть всю ночь. Повтор того же кадра невидим.
+
+**Watchdog на Core 1 (v1.2.1).** В конце `setup()` вызывается `enableLoopWDT()`: ядро Arduino кормит task
+watchdog перед каждым проходом `loop()` (каждые 5–12 мс), и проход дольше 5 с — например, зависший `show()`
+— вызывает панику и перезагрузку. По умолчанию ядро Arduino задачу `loop()` на watchdog не подписывает, а
+sdkconfig следит только за задачей простоя ядра 0. На Core 0 `NetworkTask` на watchdog не подписана: все её
+ожидания ограничены таймаутами (сокет MQTT — 3 с, поиск адреса, WiFi — циклы с `vTaskDelay`), а зависание
+`show()` статус-светодиода под `RmtLock` ловит `loop()` на Core 1 (см. §3.5).
 
 ### 3.4 Цикл Core 0 (`NetworkTask`)
 
