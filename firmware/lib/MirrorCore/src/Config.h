@@ -136,8 +136,8 @@ constexpr uint8_t  DIM_MIN       = 5;
 constexpr uint8_t  DIM_MAX       = 255;
 
 // --- Network ------------------------------------------------------------
+// WiFi down this long -> restart once the mirror is dark (NetWatchdog.h).
 constexpr uint32_t WATCHDOG_TIMEOUT_MS        = 5UL * 60 * 1000;  // 5 min
-constexpr uint32_t WATCHDOG_CHECK_INTERVAL_MS = 30UL * 1000;      // 30 s
 constexpr uint32_t TELEMETRY_PERIOD_MS        = 10UL * 1000;      // 10 s
 constexpr uint32_t PUBLISH_MIN_INTERVAL_MS    = 250;
 constexpr uint16_t MQTT_BUFFER_SIZE           = 512;

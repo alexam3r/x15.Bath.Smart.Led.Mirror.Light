@@ -18,6 +18,7 @@
 #include "Config.h"
 #include "Types.h"
 #include "Log.h"
+#include "NetWatchdog.h"
 #include "Topics.h"
 #include "Protocol.h"
 #include "StatusLed.h"
@@ -40,6 +41,7 @@ StatusLed    statusLed;
 QueueHandle_t cmdQueueHandle  = nullptr;
 QueueHandle_t snapQueueHandle = nullptr;
 
+NetWatchdog   netWatchdog;
 StateSnapshot latest;
 StateSnapshot lastStatePublished;  // what `<base>/state` last carried (publishChanged()'s diffing)
 bool          pending          = false;
@@ -173,10 +175,7 @@ void task(void*) {
     // creating this task, so the mailbox is guaranteed non-empty here.
     xQueueReceive(snapQueueHandle, &latest, portMAX_DELAY);
 
-    uint32_t lastWatchdogCheck = millis();
-    lastUptimeTick = lastWatchdogCheck;
-    uint32_t wifiDownAccumMs   = 0;
-    uint32_t mqttDownAccumMs   = 0;
+    lastUptimeTick = millis();
 
     for (;;) {
         const uint32_t now = millis();
@@ -187,32 +186,23 @@ void task(void*) {
             ++uptimeS;
         }
 
-        // 1. Watchdog — cumulative WiFi/MQTT downtime, checked every
-        //    WATCHDOG_CHECK_INTERVAL_MS; restart after WATCHDOG_TIMEOUT_MS
-        //    (v27, ported unchanged). Evaluated before any `continue` below
-        //    so a stuck WiFi reconnect loop still gets watchdogged.
-        if ((uint32_t)(now - lastWatchdogCheck) >= cfg::WATCHDOG_CHECK_INTERVAL_MS) {
-            const bool wifiUp  = (WiFi.status() == WL_CONNECTED);
-            const bool mqttUp  = mqtt.connected();
-            const uint32_t elapsed = (uint32_t)(now - lastWatchdogCheck);
-            lastWatchdogCheck = now;
+        // Newest snapshot from Core 1, in every state — the watchdog below
+        // needs to know whether the mirror is lit even while offline.
+        StateSnapshot incoming;
+        if (xQueueReceive(snapQueueHandle, &incoming, 0) == pdTRUE) {
+            latest  = incoming;
+            pending = true;
+        }
 
-            if (wifiUp && mqttUp) {
-                wifiDownAccumMs = 0;
-                mqttDownAccumMs = 0;
-            } else {
-                if (!wifiUp) wifiDownAccumMs += elapsed;
-                if (!mqttUp) mqttDownAccumMs += elapsed;
-                MLOG("[%lu] WDG tick: wifi_up=%d mqtt_up=%d wifi_down=%lu mqtt_down=%lu\n",
-                     (unsigned long)now, (int)wifiUp, (int)mqttUp,
-                     (unsigned long)wifiDownAccumMs, (unsigned long)mqttDownAccumMs);
-                if (wifiDownAccumMs > cfg::WATCHDOG_TIMEOUT_MS ||
-                    mqttDownAccumMs > cfg::WATCHDOG_TIMEOUT_MS) {
-                    MLOG("[%lu] WDG TIMEOUT -> ESP.restart()\n", (unsigned long)now);
-                    vTaskDelay(pdMS_TO_TICKS(100));  // let Serial flush
-                    ESP.restart();
-                }
-            }
+        // 1. Watchdog (NetWatchdog.h, v1.2.1): WiFi down for 5 min -> restart,
+        //    but only once the mirror is dark; an MQTT-only outage never
+        //    restarts. Evaluated before any `continue` below so a stuck WiFi
+        //    reconnect loop still gets watchdogged.
+        if (netWatchdog.update(now, WiFi.status() == WL_CONNECTED, latest.on)) {
+            MLOG("[%lu] WDG: WiFi down %lu ms, mirror dark -> ESP.restart()\n",
+                 (unsigned long)now, (unsigned long)netWatchdog.wifiDownMs());
+            vTaskDelay(pdMS_TO_TICKS(100));  // let Serial flush
+            ESP.restart();
         }
 
         // 2. WiFi down: yellow, reconnect, WiFi.setSleep(false) once up.
@@ -293,12 +283,6 @@ void task(void*) {
             // 4/5. Connected: pump MQTT, drain the snapshot mailbox, publish
             // on change (rate-limited) and on the periodic heartbeat.
             mqtt.loop();
-
-            StateSnapshot incoming;
-            if (xQueueReceive(snapQueueHandle, &incoming, 0) == pdTRUE) {
-                latest  = incoming;
-                pending = true;
-            }
 
             if (pending && (uint32_t)(now - lastPublish) >= cfg::PUBLISH_MIN_INTERVAL_MS) {
                 publishChanged(latest);
