@@ -91,6 +91,7 @@ void publishDiag() {
     d.resetReason = static_cast<uint8_t>(esp_reset_reason());
     d.freeHeap    = ESP.getFreeHeap();
     d.minFreeHeap = ESP.getMinFreeHeap();
+    d.maxAllocHeap = ESP.getMaxAllocHeap();
     char buf[cfg::DIAG_JSON_CAP];
     if (buildDiagJson(d, buf, sizeof(buf)) == 0) {
         MLOG("diag json did not fit\n");

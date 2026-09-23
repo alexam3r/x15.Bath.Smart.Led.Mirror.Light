@@ -198,3 +198,17 @@ mqtt:
       entity_category: diagnostic
       icon: "mdi:memory"
       device: *mirror_device
+
+    # Крупнейший свободный блок кучи (v1.2.1): если он со временем падает при
+    # стабильной «свободной памяти» — куча фрагментируется.
+    - name: "Зеркало: крупнейший блок памяти"
+      unique_id: mirror_max_alloc_heap
+      state_topic: "home/flat8/bath/mirror/diag"
+      value_template: "{{ value_json.max_alloc_heap }}"
+      availability_topic: "home/flat8/bath/mirror/availability"
+      device_class: data_size
+      unit_of_measurement: "B"
+      state_class: measurement
+      entity_category: diagnostic
+      icon: "mdi:memory"
+      device: *mirror_device

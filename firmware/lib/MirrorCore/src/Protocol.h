@@ -37,6 +37,7 @@ struct DiagInfo {
     uint8_t  resetReason = 0;  // esp_reset_reason_t value
     uint32_t freeHeap    = 0;
     uint32_t minFreeHeap = 0;
+    uint32_t maxAllocHeap = 0;  // largest free block: shows fragmentation (v1.2.1)
 };
 
 // "POWERON", "EXT", "SW", "PANIC", "INT_WDT", "TASK_WDT", "WDT",

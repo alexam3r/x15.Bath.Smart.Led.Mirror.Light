@@ -200,7 +200,7 @@ mosquitto_pub -h 10.0.0.1 -t home/flat8/bath/mirror/set -m '{
 | `pir/state` | да | `ON`/`OFF` — сырой уровень PIR (реальное движение), для `binary_sensor` |
 | `availability` | да | `online`/`offline` — LWT; HA показывает «недоступно», если зеркало пропало из сети |
 | `glitch/state` | да | `ON`/`OFF` — флаг глитча (`switch` в HA) |
-| `diag` | да | JSON-диагностика (v1.2.0), раз в минуту: `uptime_s`, `rssi`, `reset_reason`, `free_heap`, `min_free_heap`, `fw` |
+| `diag` | да | JSON-диагностика (v1.2.0), раз в минуту: `uptime_s`, `rssi`, `reset_reason`, `free_heap`, `min_free_heap`, `max_alloc_heap`, `fw` |
 
 Все `*/state` публикуются целиком при (пере)подключении к MQTT, далее — только изменившиеся; основной
 `state` дополнительно раз в 10 секунд (heartbeat).
@@ -227,6 +227,7 @@ HA MQTT Discovery в v1.0.0 **удалён** — зеркало ничего н�
 | sensor «Зеркало: WiFi» — RSSI, дБм (v1.2.0) | `mirror_wifi_rssi` | `diag` |
 | sensor «Зеркало: причина перезагрузки» (v1.2.0) | `mirror_reset_reason` | `diag` |
 | sensor «Зеркало: свободная память» (v1.2.0) | `mirror_free_heap` | `diag` |
+| sensor «Зеркало: крупнейший блок памяти» (v1.2.1) | `mirror_max_alloc_heap` | `diag` |
 
 Все сущности зависят от `availability` (LWT). `unique_id` совпадают с прежним конфигом, поэтому история и
 привязки в УДЯ сохраняются; «Движение ванная» теперь показывает реальный PIR, а не флаг автоматики.

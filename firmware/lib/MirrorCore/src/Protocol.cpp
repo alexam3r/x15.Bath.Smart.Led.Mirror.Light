@@ -146,6 +146,7 @@ size_t buildDiagJson(const DiagInfo& d, char* buf, size_t cap, ArduinoJson::Allo
     doc["reset_reason"]  = resetReasonName(d.resetReason);
     doc["free_heap"]     = d.freeHeap;
     doc["min_free_heap"] = d.minFreeHeap;
+    doc["max_alloc_heap"] = d.maxAllocHeap;
     doc["fw"]            = cfg::FW_VERSION;
     if (doc.overflowed()) return 0;  // out of memory: fields were dropped
     if (measureJson(doc) >= cap) return 0;
