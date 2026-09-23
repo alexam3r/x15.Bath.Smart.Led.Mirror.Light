@@ -8,6 +8,7 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <lwip/netdb.h>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -61,6 +62,24 @@ bool lastGlitch     = false;
 uint32_t uptimeS        = 0;
 uint32_t lastUptimeTick = 0;
 uint32_t lastDiagPublish = 0;
+
+// Resolves MQTT_SERVER (a hostname or an IP literal) with lwIP's
+// getaddrinfo(), which runs the lookup in the TCP/IP thread and waits for the
+// resolver's own answer. Arduino-ESP32 2.0.17's WiFi.hostByName() — what
+// PubSubClient uses when given a hostname — calls dns_gethostbyname() without
+// the lwIP core lock and gives up after its own timeout; a late DNS answer
+// then writes into a stack frame that no longer exists. Once per connect
+// attempt only, so the small allocation inside getaddrinfo() is harmless.
+bool resolveBroker(IPAddress& out) {
+    addrinfo hints{};
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* res = nullptr;
+    if (getaddrinfo(MQTT_SERVER, nullptr, &hints, &res) != 0 || res == nullptr) return false;
+    out = IPAddress(reinterpret_cast<const sockaddr_in*>(res->ai_addr)->sin_addr.s_addr);
+    freeaddrinfo(res);
+    return true;
+}
 
 // Publishes `<base>/diag` (retain): uptime, WiFi level, last reset reason,
 // free heap. Diagnostics live outside `<base>/state` on purpose — uptime
@@ -163,7 +182,6 @@ void task(void*) {
     WiFi.setHostname("SmartMirror");
     WiFi.mode(WIFI_STA);
     topics.init(MQTT_BASE);
-    mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(onMessage);
     mqtt.setBufferSize(cfg::MQTT_BUFFER_SIZE);
     mqtt.setSocketTimeout(cfg::MQTT_SOCKET_TIMEOUT_S);  // < task watchdog, see Config.h
@@ -234,6 +252,14 @@ void task(void*) {
             char clientId[32];
             std::snprintf(clientId, sizeof(clientId), "ESP32S3-Mirror-%02X%02X%02X",
                           mac[3], mac[4], mac[5]);
+
+            IPAddress brokerIp;
+            if (!resolveBroker(brokerIp)) {
+                MLOG("MQTT: cannot resolve the broker\n");
+                vTaskDelay(pdMS_TO_TICKS(cfg::MQTT_RETRY_DELAY_MS));
+                continue;
+            }
+            mqtt.setServer(brokerIp, MQTT_PORT);  // by IP: PubSubClient never calls hostByName()
 
             if (mqtt.connect(clientId, MQTT_USER, MQTT_PASS,
                               topics.availability, 0, true, "offline")) {

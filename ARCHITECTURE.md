@@ -119,6 +119,10 @@ void loop() {
    автосгенерированное `esp32s3-XXXXXX`. При потере связи: `disconnect()`/`begin()`, до 20 × 500 мс;
    после `WL_CONNECTED` — **`WiFi.setSleep(false)`**.
 3. **MQTT** — `setBufferSize(512)`, стабильный client id `ESP32S3-Mirror-<MAC[3..5]>`,
+   Адрес брокера (v1.2.1) перед каждой попыткой ищется через `getaddrinfo()` lwIP, и подключение идёт уже по
+   IP: `WiFi.hostByName()` в Arduino 2.0.17 зовёт резолвер без блокировки ядра lwIP и бросает ожидание по
+   своему таймауту, после чего запоздалый ответ DNS пишет в уже несуществующий кадр стека. Таймаут сокета MQTT
+   — 3 с, меньше task watchdog (5 с): PubSubClient ждёт CONNACK в пустом цикле.
    LWT `<base>/availability = "offline"` (retain). После connect: подписка `<base>/set` и `<base>/+/set`,
    публикация `availability = "online"` и **всех** state-топиков из последнего снимка. В debug-сборке после
    первого connect один раз логируется запас стека задачи (`uxTaskGetStackHighWaterMark`, байты из 10000).
