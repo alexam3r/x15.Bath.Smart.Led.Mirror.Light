@@ -39,24 +39,25 @@ constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
 constexpr uint8_t  BREATHE_CYCLES      = 3;
 constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 % to the eye (CIE 1931, v1.3.0)
 
-// --- Embers effect (v1.3.0) -------------------------------------------------
+// --- Embers effect (v1.3.0, deeper with soft edges in v1.3.1) ---------------
 // Sparse smouldering coals: every step a new coal lights with probability
-// EMBERS_SPAWN_PER_MILLE (about one pixel in eight is a coal at any moment).
-// A coal dims its pixel to a random floor of EMBERS_FLOOR_MIN..MAX perceived
-// brightness and back along a cosine over EMBERS_DIP_MIN..MAX_STEPS, and its
-// two neighbours to EMBERS_NEIGHBOUR_SHARE of that depth. Coals start at
-// least EMBERS_MIN_GAP pixels apart; no new ones in the last
-// EMBERS_DIP_MAX_STEPS, so the effect dies down on its own. ~20 s.
+// EMBERS_SPAWN_PER_MILLE (about one spot per twelve pixels at any moment).
+// A coal dims its centre to a random floor of EMBERS_FLOOR_MIN..MAX perceived
+// brightness and back along a cosine over EMBERS_DIP_MIN..MAX_STEPS, with a
+// soft edge of EMBERS_EDGE pixels each side whose depth falls off in even
+// perceived steps (2/3, 1/3 for an edge of 2). Coals start at least
+// EMBERS_MIN_GAP pixels apart; no new ones in the last EMBERS_DIP_MAX_STEPS,
+// so the effect dies down on its own. ~20 s.
 constexpr uint32_t EMBERS_STEP_MS         = 30;
 constexpr uint16_t EMBERS_STEPS           = 667;  // ~20 s
 constexpr uint8_t  EMBERS_MAX_COALS       = 24;
-constexpr uint16_t EMBERS_SPAWN_PER_MILLE = 350;
-constexpr uint8_t  EMBERS_FLOOR_MIN       = 77;   // 30 % to the eye
-constexpr uint8_t  EMBERS_FLOOR_MAX       = 128;  // 50 % to the eye
+constexpr uint16_t EMBERS_SPAWN_PER_MILLE = 250;
+constexpr uint8_t  EMBERS_FLOOR_MIN       = 26;   // 10 % to the eye (v1.3.0: 30 %)
+constexpr uint8_t  EMBERS_FLOOR_MAX       = 77;   // 30 % to the eye (v1.3.0: 50 %)
 constexpr uint8_t  EMBERS_DIP_MIN_STEPS   = 33;   // ~1 s
 constexpr uint8_t  EMBERS_DIP_MAX_STEPS   = 83;   // ~2.5 s
-constexpr uint8_t  EMBERS_NEIGHBOUR_SHARE = 128;  // neighbours dim to half the depth
-constexpr uint8_t  EMBERS_MIN_GAP         = 3;
+constexpr uint8_t  EMBERS_EDGE            = 2;    // soft edge, pixels each side
+constexpr uint8_t  EMBERS_MIN_GAP         = 2 * EMBERS_EDGE + 1;
 
 // --- Comet effect (v1.2.0) --------------------------------------------------
 // A white head with a COMET_TAIL-pixel tail (fading evenly to the eye, v1.3.0) travels once around the
@@ -191,6 +192,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.3.0";
+constexpr char FW_VERSION[] = "1.3.1";
 
 }  // namespace cfg

@@ -1,6 +1,7 @@
-// Embers (v1.3.0): the ring smoulders — about one pixel in eight is a coal
-// that dims to 30..50 % (to the eye) and back over 1..2.5 s, its two
-// neighbours to half that depth, every coal on its own clock. Replaces the
+// Embers (v1.3.0): the ring smoulders — about one spot per twelve pixels is
+// a coal whose centre dims to 10..30 % (to the eye) and back over 1..2.5 s,
+// with a soft edge of EMBERS_EDGE pixels each side (v1.3.1), every coal on its
+// own clock. Replaces the
 // v1.2.0 version, where all 168 pixels drifted a little at once and the eye
 // saw only a faint ripple.
 #pragma once

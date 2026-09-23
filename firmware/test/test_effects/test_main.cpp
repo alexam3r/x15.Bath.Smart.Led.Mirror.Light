@@ -493,12 +493,13 @@ static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
     }
 }
 
-// --- Embers (v1.3.0): sparse smouldering coals ------------------------------
-// About one pixel in eight is a coal at any moment: it dims to 30..50 % (to
-// the eye) and back along a cosine over 1..2.5 s, its two neighbours to half
-// that depth, every coal on its own clock. Levels are perceived brightness
-// (CIE 1931); in makeup the white channel is the multiplier itself, so
-// lightness8(f[i].w) reads a pixel's perceived level directly.
+// --- Embers (v1.3.0; deeper with soft edges in v1.3.1): sparse coals --------
+// About one spot per twelve pixels at any moment: its centre dims to 10..30 %
+// (to the eye) and back along a cosine over 1..2.5 s, with a soft edge of
+// EMBERS_EDGE pixels each side (2/3, 1/3 of the depth), every coal on its own
+// clock. Levels are perceived brightness (CIE 1931); in makeup the white
+// channel is the multiplier itself, so lightness8(f[i].w) reads a pixel's
+// perceived level directly.
 
 // Deterministic stand-in for esp_random.
 static uint32_t s_lcg = 12345;
@@ -535,13 +536,14 @@ static void test_embers_starts_and_ends_on_the_plain_base(void) {
     }
 }
 
-static void test_embers_coal_dips_deep_with_soft_neighbours(void) {
+static void test_embers_coal_dips_to_10_percent_with_soft_edges(void) {
     s_spawnRolls = 0;
     Embers fx;
     Frame f;
     EffectContext ctx{kMakeup, oneCoalRandom};
     fx.begin(ctx);
-    int minCentre = 255, minLeft = 255, minRight = 255;
+    int minAt[2 * cfg::EMBERS_EDGE + 1];
+    for (int& m : minAt) m = 255;
     bool rising = false;
     int prevCentre = 255;
     while (fx.step(f, ctx)) {
@@ -549,17 +551,25 @@ static void test_embers_coal_dips_deep_with_soft_neighbours(void) {
         if (centre > prevCentre) rising = true;
         TEST_ASSERT_TRUE_MESSAGE(!(rising && centre < prevCentre), "the dip went down twice");
         prevCentre = centre;
-        if (centre < minCentre) minCentre = centre;
-        if (lightness8(f[49].w) < minLeft) minLeft = lightness8(f[49].w);
-        if (lightness8(f[51].w) < minRight) minRight = lightness8(f[51].w);
+        for (int k = -cfg::EMBERS_EDGE; k <= cfg::EMBERS_EDGE; ++k) {
+            const int l = lightness8(f[50 + k].w);
+            if (l < minAt[k + cfg::EMBERS_EDGE]) minAt[k + cfg::EMBERS_EDGE] = l;
+        }
         for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            if (i < 49 || i > 51) TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[i], "only the coal and its neighbours dim");
+            if (i < 50 - cfg::EMBERS_EDGE || i > 50 + cfg::EMBERS_EDGE) {
+                TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[i], "only the coal and its edge dim");
+            }
         }
     }
-    TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::EMBERS_FLOOR_MIN, minCentre, "the coal did not reach its floor");
-    const int halfway = 255 - (255 - cfg::EMBERS_FLOOR_MIN) / 2;
-    TEST_ASSERT_INT_WITHIN_MESSAGE(4, halfway, minLeft, "the neighbours must dim to half the depth");
-    TEST_ASSERT_EQUAL_INT(minLeft, minRight);
+    TEST_ASSERT_EQUAL_UINT8(26, cfg::EMBERS_FLOOR_MIN);  // 10 % to the eye
+    const int depth = 255 - cfg::EMBERS_FLOOR_MIN;
+    TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::EMBERS_FLOOR_MIN, minAt[cfg::EMBERS_EDGE], "the coal did not reach 10 %");
+    // Soft edge: even perceived steps from the centre out to the base.
+    for (int k = 1; k <= cfg::EMBERS_EDGE; ++k) {
+        const int want = 255 - depth * (cfg::EMBERS_EDGE + 1 - k) / (cfg::EMBERS_EDGE + 1);
+        TEST_ASSERT_INT_WITHIN_MESSAGE(4, want, minAt[cfg::EMBERS_EDGE + k], "uneven soft edge (right)");
+        TEST_ASSERT_INT_WITHIN_MESSAGE(4, want, minAt[cfg::EMBERS_EDGE - k], "uneven soft edge (left)");
+    }
     TEST_ASSERT_TRUE(kMakeup == f[50]);  // back to base at the end
 }
 
@@ -585,7 +595,8 @@ static void test_embers_are_sparse_and_staggered(void) {
                 if (!seen[l]) { seen[l] = true; ++distinct; }
             }
         }
-        TEST_ASSERT_TRUE_MESSAGE(dimmed <= 3 * cfg::EMBERS_MAX_COALS, "more pixels dimmed than coals allow");
+        TEST_ASSERT_TRUE_MESSAGE(dimmed <= (2 * cfg::EMBERS_EDGE + 1) * cfg::EMBERS_MAX_COALS,
+                                 "more pixels dimmed than coals allow");
         dimmedTotal += dimmed;
         ++samples;
         if (distinct > maxDistinct) maxDistinct = distinct;
@@ -596,19 +607,23 @@ static void test_embers_are_sparse_and_staggered(void) {
     TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 10, "the coals dim in step instead of on their own clocks");
 }
 
-static void test_embers_move_smoothly_and_never_below_30_percent(void) {
+static void test_embers_move_smoothly_and_never_below_10_percent(void) {
     s_lcg = 4242;
     Embers fx;
     Frame f;
     EffectContext ctx{kMakeup, lcgRandom};
     fx.begin(ctx);
+    // The steepest a cosine dip can move per step, plus rounding.
+    const int maxStep = static_cast<int>(3.1416f * (255 - cfg::EMBERS_FLOOR_MIN) / cfg::EMBERS_DIP_MIN_STEPS) + 2;
     uint8_t prev[Frame::kSize];
     for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = 255;
     while (fx.step(f, ctx)) {
         for (uint16_t i = 0; i < Frame::kSize; ++i) {
             const int l = lightness8(f[i].w);
-            TEST_ASSERT_TRUE_MESSAGE(l >= cfg::EMBERS_FLOOR_MIN - 1, "dipped below 30 %");
-            TEST_ASSERT_INT_WITHIN_MESSAGE(20, prev[i], l, "a coal jumped instead of fading");
+            // Compared in PWM: at 10 % to the eye a PWM step spans several
+            // lightness units, so a round trip through lightness8 undershoots.
+            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::EMBERS_FLOOR_MIN), "dipped below 10 %");
+            TEST_ASSERT_INT_WITHIN_MESSAGE(maxStep, prev[i], l, "a coal jumped instead of fading");
             TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
             prev[i] = static_cast<uint8_t>(l);
         }
@@ -784,9 +799,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
     RUN_TEST(test_breathe_curve_is_even_to_the_eye);
     RUN_TEST(test_embers_starts_and_ends_on_the_plain_base);
-    RUN_TEST(test_embers_coal_dips_deep_with_soft_neighbours);
+    RUN_TEST(test_embers_coal_dips_to_10_percent_with_soft_edges);
     RUN_TEST(test_embers_are_sparse_and_staggered);
-    RUN_TEST(test_embers_move_smoothly_and_never_below_30_percent);
+    RUN_TEST(test_embers_move_smoothly_and_never_below_10_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
     RUN_TEST(test_comet_head_is_white_with_a_tail_even_to_the_eye);

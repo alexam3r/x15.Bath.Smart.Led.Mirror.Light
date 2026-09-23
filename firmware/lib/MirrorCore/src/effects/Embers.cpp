@@ -51,13 +51,16 @@ bool Embers::step(Frame& out, const EffectContext& ctx) {
     for (Coal& c : coals_) {
         if (c.duration == 0) continue;
         const float shape = (1.0f - std::cos(kTwoPi * c.age / c.duration)) * 0.5f;  // 0 -> 1 -> 0
-        const uint8_t dip = static_cast<uint8_t>(c.depth * shape + 0.5f);
-        const uint8_t side = scale8(dip, cfg::EMBERS_NEIGHBOUR_SHARE);
-        const uint16_t left = static_cast<uint16_t>((c.centre + cfg::TOTAL_LEDS - 1) % cfg::TOTAL_LEDS);
-        const uint16_t right = static_cast<uint16_t>((c.centre + 1) % cfg::TOTAL_LEDS);
-        if (255 - dip < level[c.centre]) level[c.centre] = static_cast<uint8_t>(255 - dip);
-        if (255 - side < level[left]) level[left] = static_cast<uint8_t>(255 - side);
-        if (255 - side < level[right]) level[right] = static_cast<uint8_t>(255 - side);
+        const float dip = c.depth * shape;
+        // Centre at full depth, the soft edge falling off in even perceived
+        // steps: pixel k out of EMBERS_EDGE gets (EDGE + 1 - k) / (EDGE + 1).
+        for (int k = -static_cast<int>(cfg::EMBERS_EDGE); k <= static_cast<int>(cfg::EMBERS_EDGE); ++k) {
+            const int off = k < 0 ? -k : k;
+            const float share = static_cast<float>(cfg::EMBERS_EDGE + 1 - off) / (cfg::EMBERS_EDGE + 1);
+            const uint8_t l = static_cast<uint8_t>(255 - static_cast<int>(dip * share + 0.5f));
+            const uint16_t i = static_cast<uint16_t>((c.centre + cfg::TOTAL_LEDS + k) % cfg::TOTAL_LEDS);
+            if (l < level[i]) level[i] = l;
+        }
         if (++c.age > c.duration) c.duration = 0;  // rendered ages 0..duration: back at base
     }
     for (uint16_t i = 0; i < cfg::TOTAL_LEDS; ++i) out[i] = scale(ctx.base, cie8(level[i]));
