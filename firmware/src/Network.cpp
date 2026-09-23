@@ -337,12 +337,13 @@ void task(void*) {
 
 }  // namespace
 
-void start(QueueHandle_t cmdQueue, QueueHandle_t snapQueue) {
+bool start(QueueHandle_t cmdQueue, QueueHandle_t snapQueue) {
     cmdQueueHandle  = cmdQueue;
     snapQueueHandle = snapQueue;
 
     TaskHandle_t handle = nullptr;
-    xTaskCreatePinnedToCore(task, "NetworkTask", cfg::NETWORK_TASK_STACK, nullptr, 1, &handle, 0);
+    return xTaskCreatePinnedToCore(task, "NetworkTask", cfg::NETWORK_TASK_STACK, nullptr, 1, &handle, 0) ==
+           pdPASS;
 }
 
 }  // namespace network

@@ -81,6 +81,9 @@ void setup() {
 
     cmdQueue  = xQueueCreate(cfg::CMD_QUEUE_LEN, sizeof(Command));
     snapQueue = xQueueCreate(1, sizeof(StateSnapshot));
+    // Out of memory at boot: a restart is the only sane answer — running on
+    // would crash on a null queue or leave the mirror offline for good.
+    if (cmdQueue == nullptr || snapQueue == nullptr) esp_restart();
 
     mirror.begin(millis());
     restoreFlags();
@@ -89,7 +92,7 @@ void setup() {
     rtcFlags = packFlags(lastSnapshot.automation, lastSnapshot.nightMode, lastSnapshot.glitch);
     xQueueOverwrite(snapQueue, &lastSnapshot);
 
-    network::start(cmdQueue, snapQueue);
+    if (!network::start(cmdQueue, snapQueue)) esp_restart();
 
     // Core 1 has no watchdog by default (the Arduino core leaves the loop
     // task unsubscribed and sdkconfig only watches the Core 0 idle task). A

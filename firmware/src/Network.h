@@ -8,7 +8,8 @@
 namespace network {
 
 // Creates and pins the NetworkTask to Core 0. cmdQueue: Core 0 -> Core 1
-// commands. snapQueue: Core 1 -> Core 0 state mailbox (1 element).
-void start(QueueHandle_t cmdQueue, QueueHandle_t snapQueue);
+// commands. snapQueue: Core 1 -> Core 0 state mailbox (1 element). False if
+// FreeRTOS could not create the task.
+bool start(QueueHandle_t cmdQueue, QueueHandle_t snapQueue);
 
 }  // namespace network
