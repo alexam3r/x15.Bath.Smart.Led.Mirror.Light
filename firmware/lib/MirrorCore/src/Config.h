@@ -167,6 +167,11 @@ constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
 // Longest wait for the RMT lock (RmtLock.h): a strip frame holds it ~7 ms,
 // the status LED well under 1 ms. On timeout the show is skipped and retried.
 constexpr uint32_t RMT_LOCK_TIMEOUT_MS = 50;
+// The current frame is re-sent at least this often even when it has not
+// changed: SK6812s keep whatever they last latched, so a frame garbled by
+// noise on the data line would otherwise stay until the next change (all
+// night on a dark mirror). Re-sending an identical frame is invisible.
+constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------

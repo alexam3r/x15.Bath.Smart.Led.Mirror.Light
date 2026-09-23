@@ -27,6 +27,7 @@ static QueueHandle_t snapQueue = nullptr;
 
 static StateSnapshot lastSnapshot;
 static bool          redrawPending = false;  // last show() lost the RMT lock: draw again
+static uint32_t      lastShowMs    = 0;      // last frame actually sent to the strips
 
 void setup() {
     // First thing: SK6812s keep their last frame across an ESP reset (network
@@ -81,9 +82,14 @@ void loop() {
     mirror.onPir(digitalRead(cfg::PIN_PIR) == HIGH, now);  // 3. PIR
     mirror.tick(now);                                      // 4. timers + animation step
 
-    // 5. output: only when the frame changed, or when the last attempt lost
-    // the RMT lock to the status LED and drew nothing.
-    if (mirror.takeFrameDirty() || redrawPending) redrawPending = !leds.show(mirror.frame());
+    // 5. output: when the frame changed, when the last attempt lost the RMT
+    // lock and drew nothing, and every FRAME_REFRESH_MS regardless, so a
+    // frame corrupted on the wire heals itself.
+    const bool refreshDue = (uint32_t)(now - lastShowMs) >= cfg::FRAME_REFRESH_MS;
+    if (mirror.takeFrameDirty() || redrawPending || refreshDue) {
+        redrawPending = !leds.show(mirror.frame());
+        if (!redrawPending) lastShowMs = now;
+    }
 
     StateSnapshot s = mirror.snapshot();  // 6. snapshot for the network
     if (!(s == lastSnapshot)) {
