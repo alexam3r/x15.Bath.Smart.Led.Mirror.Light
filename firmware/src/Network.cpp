@@ -266,26 +266,30 @@ void task(void*) {
                 MLOG("MQTT connected\n");
                 mqtt.subscribe(topics.set);
                 mqtt.subscribe(topics.setWildcard);
+
+                // Mailbox depth is 1 (xQueueOverwrite on Core 1), so a
+                // single non-blocking receive gets the newest snapshot if
+                // Core 1 pushed one while mqtt.connect() was blocking.
+                // Without this, publishAll() below would publish a stale
+                // snapshot as retained state, and the real one would only
+                // follow ~1 loop later — a visible false transition for
+                // subscribers (e.g. pir/state ON->OFF on reconnect).
+                xQueueReceive(snapQueueHandle, &latest, 0);
+
+                // Real state first, "online" last (v1.2.1): when an entity
+                // becomes available HA shows its cached state until the next
+                // message, so announcing "online" first showed e.g. a stale
+                // ON for a second before the real OFF — a false edge for
+                // automations and the logbook.
+                publishAll(latest);
+                publishDiag();
                 mqtt.publish(topics.availability, "online", true);
 
                 statusLed.set(0, 100, 0);
                 vTaskDelay(pdMS_TO_TICKS(1000));
                 statusLed.set(0, 0, 0);
 
-                // Mailbox depth is 1 (xQueueOverwrite on Core 1), so a
-                // single non-blocking receive gets the newest snapshot if
-                // Core 1 pushed one while we were disconnected/connecting;
-                // otherwise `latest` is already current and this is a no-op.
-                // Without this, publishAll() below would publish a stale
-                // snapshot (from link-drop or boot) as retained state, and
-                // the real one would only follow ~1 loop later via
-                // publishChanged() — a visible false transition for
-                // subscribers (e.g. pir/state ON->OFF on reconnect).
-                xQueueReceive(snapQueueHandle, &latest, 0);
-
-                publishAll(latest);
                 const uint32_t connectedAt = millis();  // not `now` — mqtt.connect() and the 1 s flash both block
-                publishDiag();
                 pending          = false;
                 lastPublish      = connectedAt;
                 lastStatePublish = connectedAt;
