@@ -31,11 +31,15 @@ bool SlideAnimation::step(Frame& out, Rgbw base) {
     for (uint16_t i = 0; i < cfg::TOTAL_LEDS; ++i) {
         int dist = ringDist(i, center_);
 
+        // Soft edge in even perceived steps (CIE 1931, v1.3.2): the
+        // lightness rises linearly from the front inwards and cie8 turns it
+        // into PWM. v27 and v1.0.1 used the linear PWM value directly, whose
+        // dark half the eye barely saw.
         uint8_t edgeFade = 0;
         if (dist <= radius_) {
             edgeFade = (dist <= radius_ - static_cast<int16_t>(cfg::SLIDE_EDGE))
                            ? 255
-                           : static_cast<uint8_t>((radius_ - dist) * 255 / cfg::SLIDE_EDGE);
+                           : cie8(static_cast<uint8_t>((radius_ - dist) * 255 / cfg::SLIDE_EDGE));
         }
         if (edgeFade > 0) out[i] = scale(base, edgeFade);
     }

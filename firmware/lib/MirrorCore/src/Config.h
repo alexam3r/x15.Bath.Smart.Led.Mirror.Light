@@ -68,10 +68,11 @@ constexpr uint16_t COMET_FADE_STEPS = 20;
 
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
-// 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s.
+// 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s. v1.3.2: the edge
+// 1.5x longer and even to the eye (CIE 1931): 102 steps * 33 ms = ~3.4 s.
 constexpr uint32_t SLIDE_STEP_MS    = 33;
-constexpr uint16_t SLIDE_EDGE       = 11;
-constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 97
+constexpr uint16_t SLIDE_EDGE       = 16;  // 15 lit edge pixels, even to the eye (v1.3.2; v1.0.1: 11)
+constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 102
 
 // --- Glitch overlay ("neon failure", v1.1.0) -----------------------------
 // A random core of GLITCH_LEN_MIN..MAX adjacent pixels flickers in the base
@@ -192,6 +193,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.3.1";
+constexpr char FW_VERSION[] = "1.3.2";
 
 }  // namespace cfg

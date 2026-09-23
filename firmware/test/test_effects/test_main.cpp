@@ -35,8 +35,25 @@ static Rgbw rgbw(uint8_t r, uint8_t g, uint8_t b, uint8_t w) { return Rgbw{r, g,
 static uint32_t zeroRandom(uint32_t /*bound*/) { return 0; }
 
 // --- SlideAnimation (Ruling R3) ---------------------------------------------
+// The lit arc grows from the centre in both directions, one pixel per step,
+// with a soft edge of SLIDE_EDGE - 1 lit pixels on each front. Since v1.3.2
+// the edge is 16 steps (15 lit pixels; v1.0.1: 11/10) in even perceived
+// steps (CIE 1931) — before it was linear in PWM, the v27 look.
 
-static void test_slide_on_takes_97_steps(void) {
+// The slide's multiplier for a pixel `back` pixels inside the front
+// (radius - dist): 0 at the front, full from SLIDE_EDGE inwards.
+static Rgbw slidePixel(Rgbw base, int back) {
+    if (back <= 0) return kBlack;
+    if (back >= static_cast<int>(cfg::SLIDE_EDGE)) return base;
+    return scale(base, cie8(static_cast<uint8_t>(back * 255 / cfg::SLIDE_EDGE)));
+}
+
+static void test_slide_edge_is_15_pixels(void) {
+    TEST_ASSERT_EQUAL_UINT16(16, cfg::SLIDE_EDGE);
+    TEST_ASSERT_EQUAL_UINT16(cfg::TOTAL_LEDS / 2 + cfg::SLIDE_EDGE + 2, cfg::SLIDE_MAX_RADIUS);  // 102
+}
+
+static void test_slide_on_takes_max_radius_steps(void) {
     SlideAnimation slide;
     Frame f;
     slide.startOn(9);
@@ -48,7 +65,7 @@ static void test_slide_on_takes_97_steps(void) {
         ++calls;
         TEST_ASSERT_TRUE_MESSAGE(calls <= 200, "slide-on did not finish in time");
     }
-    TEST_ASSERT_EQUAL_INT(97, calls);
+    TEST_ASSERT_EQUAL_INT(cfg::SLIDE_MAX_RADIUS, calls);
 }
 
 // Runs a slide-on to completion (radius_ == SLIDE_MAX_RADIUS), i.e. the
@@ -58,12 +75,12 @@ static void completeSlideOn(SlideAnimation& slide, Frame& f, uint16_t center) {
     while (slide.step(f, kSolid)) {}
 }
 
-static void test_slide_off_takes_98_steps(void) {
+static void test_slide_off_takes_max_radius_plus_one_steps(void) {
     SlideAnimation slide;
     Frame f;
     completeSlideOn(slide, f, 9);
     slide.startOff();  // from ON (radius_ == SLIDE_MAX_RADIUS) -> starts at SLIDE_MAX_RADIUS
-    TEST_ASSERT_EQUAL_INT16(97, slide.radius());
+    TEST_ASSERT_EQUAL_INT16(cfg::SLIDE_MAX_RADIUS, slide.radius());
 
     int calls = 0;
     bool more = true;
@@ -72,7 +89,7 @@ static void test_slide_off_takes_98_steps(void) {
         ++calls;
         TEST_ASSERT_TRUE_MESSAGE(calls <= 200, "slide-off did not finish in time");
     }
-    TEST_ASSERT_EQUAL_INT(98, calls);
+    TEST_ASSERT_EQUAL_INT(cfg::SLIDE_MAX_RADIUS + 1, calls);
 
     // Finished while turning off -> v27 clears the strips.
     for (uint16_t i = 0; i < Frame::kSize; ++i) {
@@ -105,7 +122,7 @@ static void test_slide_reverse_keeps_radius(void) {
 
 // Ruling R17: powering off before the slide-on rendered its first step
 // (radius_ still 0) keeps radius 0 instead of jumping to SLIDE_MAX_RADIUS —
-// otherwise the whole ring would light up and play a full ~3.2 s slide-out.
+// otherwise the whole ring would light up and play a full slide-out.
 // The one remaining step renders radius 0 (dark everywhere) and finishes.
 static void test_slide_off_from_radius_0_stays_dark(void) {
     SlideAnimation slide;
@@ -125,74 +142,64 @@ static void test_slide_off_from_radius_0_stays_dark(void) {
     // startOff() restarts from SLIDE_MAX_RADIUS, as before.
     TEST_ASSERT_TRUE(slide.radius() < 0);
     slide.startOff();
-    TEST_ASSERT_EQUAL_INT16(97, slide.radius());
+    TEST_ASSERT_EQUAL_INT16(cfg::SLIDE_MAX_RADIUS, slide.radius());
 }
 
-// Golden frames: the v27 processAnimation() MODE_ANIM_ON/MODE_ANIM_OFF formula
-// (main.cpp lines 946-1013 @ d4421dd) with the v1.0.1 soft edge SLIDE_EDGE = 11
-// (v27 used 9), computed offline for center=9. Frame N below is the output of
-// the Nth step() call (renders radius N-1 while turning on).
-static void test_slide_golden_frames(void) {
+// Frames of a slide-on from centre 9: frame N is the output of the Nth
+// step() call and renders radius N - 1.
+static void test_slide_frames_follow_the_perceptual_edge(void) {
+    // Call 1 -> radius 0: nothing lit yet.
     SlideAnimation slide;
     Frame f;
     slide.startOn(9);
-
-    // Call 1 -> radius 0: edgeFade==0 everywhere (dist<=radius-EDGE never
-    // holds at radius 0), so the whole ring is still black.
     slide.step(f, kSolid);
-    TEST_ASSERT_TRUE(kBlack == f[9]);
-    TEST_ASSERT_TRUE(kBlack == f[0]);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(kBlack == f[i]);
 
-    // Advance to call 10 -> renders radius 9. radius < EDGE: no pixel is at
-    // full brightness yet, the centre itself is still on the fading edge.
-    for (int i = 0; i < 9; ++i) slide.step(f, kSolid);
-    TEST_ASSERT_EQUAL_INT16(10, slide.radius());  // already advanced past the rendered radius
-    TEST_ASSERT_TRUE(rgbw(208, 114, 40, 0) == f[9]);  // dist 0 -> edgeFade 9*255/11 = 208
-    TEST_ASSERT_TRUE(rgbw(92, 50, 18, 0) == f[4]);    // dist 5 -> edgeFade 4*255/11 = 92
-    TEST_ASSERT_TRUE(kBlack == f[0]);                 // dist 9 == radius -> edgeFade 0
+    // Call 51 -> radius 50: both fronts at distance 50 from the centre, each
+    // with its soft edge; full inside, black outside.
+    SlideAnimation s50;
+    Frame f50;
+    s50.startOn(9);
+    for (int i = 0; i < 51; ++i) s50.step(f50, kSolid);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        TEST_ASSERT_TRUE_MESSAGE(slidePixel(kSolid, 50 - ringDist(i, 9)) == f50[i], "frame differs from the edge formula");
+    }
+    int lit = 0;  // partially lit pixels on the clockwise front
+    for (int d = 0; d <= 60; ++d) {
+        const Rgbw p = f50[(9 + d) % cfg::TOTAL_LEDS];
+        if (!(p == kBlack) && !(p == kSolid)) ++lit;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(15, lit, "the soft edge must be 15 pixels");
 
-    SlideAnimation slideMakeup;
-    Frame fm;
-    slideMakeup.startOn(9);
-    for (int i = 0; i < 10; ++i) slideMakeup.step(fm, kMakeup);  // -> radius 9 rendered on 10th call
-    TEST_ASSERT_TRUE(rgbw(0, 0, 0, 92) == fm[4]);  // makeup base, dist 5 -> edgeFade 92
+    // Last slide-on frame and the first slide-off frame: the whole ring lit.
+    SlideAnimation sOn;
+    Frame fOn;
+    completeSlideOn(sOn, fOn, 9);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(kSolid == fOn[i]);
+    sOn.startOff();
+    sOn.step(fOn, kSolid);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(kSolid == fOn[i]);
+}
 
-    // Advance a fresh slide to call 50 -> renders radius 49.
-    SlideAnimation slide49;
-    Frame f49;
-    slide49.startOn(9);
-    for (int i = 0; i < 50; ++i) slide49.step(f49, kSolid);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f49[47]);   // dist 38 == radius-EDGE -> full
-    TEST_ASSERT_TRUE(rgbw(115, 63, 22, 0) == f49[133]);   // dist 44 -> edgeFade 5*255/11 = 115
-    TEST_ASSERT_TRUE(kBlack == f49[69]);                  // dist 60 > radius -> black
-
-    // Call 95 -> renders radius 94: the far point (dist 84) is still on the
-    // edge (84 > radius-EDGE = 83).
-    SlideAnimation slide94;
-    Frame f94;
-    slide94.startOn(9);
-    for (int i = 0; i < 95; ++i) slide94.step(f94, kSolid);
-    TEST_ASSERT_TRUE(rgbw(231, 126, 45, 0) == f94[93]);  // dist 84 -> edgeFade 10*255/11 = 231
-
-    // Call 97 (last) -> renders radius 96: max ringDist (84) <= radius-EDGE
-    // (85), so the whole ring is lit (-> MODE_ON edge).
-    SlideAnimation slide96;
-    Frame f96;
-    slide96.startOn(9);
-    for (int i = 0; i < 97; ++i) slide96.step(f96, kSolid);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f96[0]);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == f96[93]);
-
-    // First slide-off frame from a fresh ON (radius == SLIDE_MAX_RADIUS ==
-    // 97): max ringDist (84) <= radius-EDGE (86), whole ring lit too.
-    SlideAnimation slideOff;
-    Frame fOff;
-    completeSlideOn(slideOff, fOff, 9);
-    slideOff.startOff();
-    TEST_ASSERT_EQUAL_INT16(97, slideOff.radius());
-    slideOff.step(fOff, kSolid);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == fOff[0]);
-    TEST_ASSERT_TRUE(rgbw(255, 140, 50, 0) == fOff[93]);
+// The edge must look even: equal perceived steps from the front inwards, not
+// the v27 linear-PWM edge whose dark half the eye barely saw.
+static void test_slide_edge_is_even_to_the_eye(void) {
+    SlideAnimation slide;
+    Frame f;
+    slide.startOn(9);
+    for (int i = 0; i < 51; ++i) slide.step(f, kMakeup);  // radius 50; w channel = multiplier
+    int prev = -1, prevStep = -1;
+    for (int back = 1; back < static_cast<int>(cfg::SLIDE_EDGE); ++back) {
+        const int l = lightness8(f[(9 + 50 - back) % cfg::TOTAL_LEDS].w);
+        if (prev >= 0) {
+            const int step = l - prev;
+            TEST_ASSERT_TRUE_MESSAGE(step > 0, "the edge must brighten inwards");
+            if (prevStep >= 0) TEST_ASSERT_INT_WITHIN_MESSAGE(4, prevStep, step, "uneven perceived steps");
+            prevStep = step;
+        }
+        prev = l;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(f[(9 + 49) % cfg::TOTAL_LEDS].w <= 3, "the outermost edge pixel must be barely lit");
 }
 
 // --- Snakes (SnakeBase + DarkSnake, RainbowSnake) ---------------------------
@@ -780,11 +787,13 @@ static void test_random_effect_covers_all(void) {
 
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
-    RUN_TEST(test_slide_on_takes_97_steps);
-    RUN_TEST(test_slide_off_takes_98_steps);
+    RUN_TEST(test_slide_edge_is_15_pixels);
+    RUN_TEST(test_slide_on_takes_max_radius_steps);
+    RUN_TEST(test_slide_off_takes_max_radius_plus_one_steps);
     RUN_TEST(test_slide_reverse_keeps_radius);
     RUN_TEST(test_slide_off_from_radius_0_stays_dark);
-    RUN_TEST(test_slide_golden_frames);
+    RUN_TEST(test_slide_frames_follow_the_perceptual_edge);
+    RUN_TEST(test_slide_edge_is_even_to_the_eye);
     RUN_TEST(test_snake_finishes_after_229_steps);
     RUN_TEST(test_dark_snake_head_is_black_at_full_alpha);
     RUN_TEST(test_rainbow_snake_blends_with_base);

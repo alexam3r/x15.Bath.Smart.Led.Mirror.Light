@@ -74,10 +74,10 @@ static void test_click1_from_off_starts_slide_on(void) {
 }
 
 // Table 4.1: "slide finished" / SLIDE_ON -> ON (no pending effect).
-// v1.0.1: the power-on slide is ~20% slower than v27 (97 steps * 33 ms =
-// ~3.2 s nominal, v27: 95 * 28 ms = ~2.7 s). With the 5 ms fake-clock tick each
-// step lands 35 ms apart, so SLIDE_ON -> ON takes 97 * 35 = 3395 ms here.
-static void test_slide_on_duration_is_20_percent_longer_than_v27(void) {
+// v1.0.1: 33 ms per step (v27: 28 ms); v1.3.2: SLIDE_MAX_RADIUS = 102 steps
+// with the longer edge, ~3.4 s nominal. With the 5 ms fake-clock tick a step
+// lands every 35 ms.
+static void test_slide_on_duration_matches_its_steps(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
@@ -91,8 +91,9 @@ static void test_slide_on_duration_is_20_percent_longer_than_v27(void) {
         TEST_ASSERT_TRUE_MESSAGE(now - start < 10000, "slide-on never finished");
     }
     const uint32_t took = now - start;
-    TEST_ASSERT_TRUE_MESSAGE(took >= 3350 && took <= 3450,
-                              "slide-on duration is not ~97 steps of 33 ms (35 ms with 5 ms ticks)");
+    const uint32_t expected = cfg::SLIDE_MAX_RADIUS * 35;  // 102 steps -> 3570 ms
+    TEST_ASSERT_TRUE_MESSAGE(took + 50 >= expected && took <= expected + 50,
+                              "slide-on duration is not SLIDE_MAX_RADIUS steps of 33 ms (35 ms with 5 ms ticks)");
 }
 
 static void test_slide_on_completes_to_on(void) {
@@ -2015,7 +2016,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_begins_off);
     RUN_TEST(test_click1_from_off_starts_slide_on);
     RUN_TEST(test_slide_on_completes_to_on);
-    RUN_TEST(test_slide_on_duration_is_20_percent_longer_than_v27);
+    RUN_TEST(test_slide_on_duration_matches_its_steps);
     RUN_TEST(test_click1_from_on_slides_off_to_off);
     RUN_TEST(test_power_on_during_slide_off_reverses);
     RUN_TEST(test_power_off_before_first_slide_step_stays_dark);
