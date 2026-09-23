@@ -23,6 +23,11 @@
 #include "StatusLed.h"
 #include "secrets.h"
 
+// Config.h keeps MQTT waits below the task watchdog; make sure its idea of
+// the watchdog timeout matches the sdkconfig this core was built with.
+static_assert(cfg::TASK_WDT_TIMEOUT_S == CONFIG_ESP_TASK_WDT_TIMEOUT_S,
+              "cfg::TASK_WDT_TIMEOUT_S is out of date with the Arduino core's sdkconfig");
+
 namespace network {
 
 namespace {
@@ -159,6 +164,8 @@ void task(void*) {
     mqtt.setServer(MQTT_SERVER, MQTT_PORT);
     mqtt.setCallback(onMessage);
     mqtt.setBufferSize(cfg::MQTT_BUFFER_SIZE);
+    mqtt.setSocketTimeout(cfg::MQTT_SOCKET_TIMEOUT_S);  // < task watchdog, see Config.h
+    mqtt.setKeepAlive(cfg::MQTT_KEEPALIVE_S);
     statusLed.begin();
     statusLed.set(0, 0, 0);
 

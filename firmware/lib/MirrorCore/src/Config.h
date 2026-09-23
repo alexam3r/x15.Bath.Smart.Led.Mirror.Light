@@ -150,6 +150,17 @@ constexpr uint32_t WIFI_ATTEMPT_DELAY_MS      = 500;
 constexpr uint32_t MQTT_RETRY_DELAY_MS        = 5000;
 constexpr uint32_t NETWORK_TASK_STACK         = 10000;
 
+// PubSubClient waits for CONNACK and for the rest of a packet in a busy loop
+// that never lets the Core 0 idle task run. The ESP-IDF task watchdog of the
+// Arduino core (CONFIG_ESP_TASK_WDT_TIMEOUT_S = 5, panic) watches that idle
+// task, so every such wait must end well before 5 s — the library default of
+// 15 s turned a slow broker into a TASK_WDT reboot.
+constexpr uint32_t TASK_WDT_TIMEOUT_S         = 5;   // the Arduino core's sdkconfig value
+constexpr uint16_t MQTT_SOCKET_TIMEOUT_S      = 3;
+constexpr uint16_t MQTT_KEEPALIVE_S           = 15;
+static_assert(MQTT_SOCKET_TIMEOUT_S < TASK_WDT_TIMEOUT_S,
+              "an MQTT wait must never outlast the task watchdog");
+
 // --- Runtime ------------------------------------------------------------
 constexpr uint8_t  CMD_QUEUE_LEN      = 8;
 constexpr uint32_t LOOP_IDLE_DELAY_MS = 5;
