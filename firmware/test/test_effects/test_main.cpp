@@ -14,9 +14,9 @@
 #include "Types.h"
 #include "effects/Effect.h"
 #include "effects/EffectRegistry.h"
-#include "effects/Breathe.h"
 #include "effects/Comet.h"
 #include "effects/Embers.h"
+#include "effects/Flame.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
 #include "effects/Wave.h"
@@ -433,73 +433,6 @@ static void test_wave_golden_frames(void) {
 
 // --- EffectRegistry ----------------------------------------------------------
 
-// --- Breathe (v1.2.0): whole ring, cosine 100 % -> 60 % -> 100 %, 3 cycles ---
-// Since v1.3.0 the curve is in perceived brightness (CIE 1931): the floor is
-// 60 % to the eye, not 60 % PWM (which looked like 82 %).
-
-static bool ringUniform(const Frame& f) {
-    for (uint16_t i = 1; i < Frame::kSize; ++i) {
-        if (!(f[i] == f[0])) return false;
-    }
-    return true;
-}
-
-static void test_breathe_finishes_after_three_cycles(void) {
-    Breathe fx;
-    Frame f;
-    EffectContext ctx{kSolid, zeroRandom};
-    fx.begin(ctx);
-    TEST_ASSERT_EQUAL_UINT16(cfg::BREATHE_STEP_MS, fx.stepIntervalMs());
-    int calls = 0;
-    while (fx.step(f, ctx)) {
-        ++calls;
-        TEST_ASSERT_TRUE_MESSAGE(calls < 1000, "breathe did not finish");
-    }
-    TEST_ASSERT_EQUAL_INT(cfg::BREATHE_CYCLE_STEPS * cfg::BREATHE_CYCLES, calls + 1);
-}
-
-static void test_breathe_starts_full_and_dips_at_half_cycle(void) {
-    Breathe fx;
-    Frame f;
-    EffectContext ctx{kSolid, zeroRandom};
-    fx.begin(ctx);
-    fx.step(f, ctx);  // renders step 0
-    TEST_ASSERT_TRUE(ringUniform(f));
-    TEST_ASSERT_TRUE(kSolid == f[0]);
-    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 100
-    TEST_ASSERT_TRUE_MESSAGE(scale(kSolid, cie8(cfg::BREATHE_MIN_LEVEL)) == f[0], "not at 60 % (to the eye) halfway");
-    TEST_ASSERT_TRUE(ringUniform(f));
-    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) fx.step(f, ctx);  // renders step 200
-    TEST_ASSERT_TRUE_MESSAGE(kSolid == f[0], "did not come back to full at the cycle end");
-}
-
-// Monotone down for the first half-cycle, monotone up for the second: the
-// curve must be a smooth breath, not a saw or a jump.
-static void test_breathe_moves_smoothly_and_never_below_the_floor(void) {
-    Breathe fx;
-    Frame f;
-    EffectContext ctx{kMakeup, zeroRandom};
-    fx.begin(ctx);
-    const uint8_t floorW = cie8(cfg::BREATHE_MIN_LEVEL);
-    fx.step(f, ctx);
-    uint8_t prev = f[0].w;
-    for (int i = 1; i <= cfg::BREATHE_CYCLE_STEPS / 2; ++i) {
-        fx.step(f, ctx);
-        TEST_ASSERT_TRUE_MESSAGE(f[0].w <= prev, "brightness rose during the first half-cycle");
-        prev = f[0].w;
-    }
-    for (int i = 0; i < cfg::BREATHE_CYCLE_STEPS / 2; ++i) {
-        fx.step(f, ctx);
-        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= prev, "brightness fell during the second half-cycle");
-        prev = f[0].w;
-    }
-    fx.begin(ctx);
-    while (fx.step(f, ctx)) {
-        TEST_ASSERT_TRUE_MESSAGE(f[0].w >= floorW, "dipped below BREATHE_MIN_LEVEL");
-        TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, f[0].r, "makeup base must stay on the white channel");
-    }
-}
-
 // --- Embers (v1.3.0; deeper with soft edges in v1.3.1): sparse coals --------
 // About one spot per twelve pixels at any moment: its centre dims to 10..30 %
 // (to the eye) and back along a cosine over 1..2.5 s, with a soft edge of
@@ -637,6 +570,201 @@ static void test_embers_move_smoothly_and_never_below_10_percent(void) {
     }
 }
 
+// --- Flame (v1.4.0, replaces breathe): wide patches breathe on their own clocks
+// A patch is FLAME_WIDTH_MIN..MAX pixels wide including a soft edge of
+// FLAME_EDGE pixels each side (1/4, 2/4, 3/4 of the depth, even to the eye);
+// its flat core dims to 60 % to the eye (the old breathe depth) and back
+// along a cosine over 3..5 s. About 4-5 patches at a time, never touching.
+
+// Exactly one patch, starting at pixel 50: the narrowest and shortest, or the
+// widest and longest.
+static bool s_biggest = false;
+static uint32_t onePatchRandom(uint32_t bound) {
+    if (bound == 1000) return (s_spawnRolls++ == 0) ? 0 : 999;  // spawn once, never again
+    if (bound == cfg::TOTAL_LEDS) return 50;
+    if (bound == cfg::FLAME_WIDTH_MAX - cfg::FLAME_WIDTH_MIN + 1) return s_biggest ? bound - 1 : 0;
+    if (bound == cfg::FLAME_DIP_MAX_STEPS - cfg::FLAME_DIP_MIN_STEPS + 1) return s_biggest ? bound - 1 : 0;
+    return 0;
+}
+
+// Runs a single patch to the end in makeup and records the deepest perceived
+// level every pixel reached. Checks on the way that the core is flat and the
+// patch dips once. Returns how long, in ms, the core was visibly dimmed.
+static uint32_t runOnePatch(bool biggest, int minAt[Frame::kSize]) {
+    s_spawnRolls = 0;
+    s_biggest = biggest;
+    Flame fx;
+    Frame f;
+    EffectContext ctx{kMakeup, onePatchRandom};
+    fx.begin(ctx);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) minAt[i] = 255;
+    const int width = biggest ? cfg::FLAME_WIDTH_MAX : cfg::FLAME_WIDTH_MIN;
+    const int coreFirst = 50 + cfg::FLAME_EDGE;
+    const int coreLast = 50 + width - 1 - cfg::FLAME_EDGE;
+    bool rising = false;
+    int prevCore = 255;
+    uint32_t dimmedFrames = 0;
+    while (fx.step(f, ctx)) {
+        for (int i = coreFirst + 1; i <= coreLast; ++i) {
+            TEST_ASSERT_TRUE_MESSAGE(f[i] == f[coreFirst], "the core is not flat");
+        }
+        const int core = lightness8(f[coreFirst].w);
+        if (core < 255) ++dimmedFrames;
+        if (core > prevCore) rising = true;
+        TEST_ASSERT_TRUE_MESSAGE(!(rising && core < prevCore), "the patch dipped twice");
+        prevCore = core;
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            const int l = lightness8(f[i].w);
+            if (l < minAt[i]) minAt[i] = l;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[coreFirst], "the patch is not back to base at the end");
+    return dimmedFrames * cfg::FLAME_STEP_MS;
+}
+
+static void test_flame_starts_and_ends_on_the_plain_base(void) {
+    s_lcg = 12345;
+    Flame fx;
+    Frame f;
+    EffectContext ctx{kSolid, lcgRandom};
+    fx.begin(ctx);
+    TEST_ASSERT_EQUAL_UINT16(cfg::FLAME_STEP_MS, fx.stepIntervalMs());
+    TEST_ASSERT_EQUAL_UINT16(667, cfg::FLAME_STEPS);  // ~20 s
+    TEST_ASSERT_TRUE(fx.step(f, ctx));
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "not base at the start");
+    int calls = 1;
+    while (fx.step(f, ctx)) {
+        ++calls;
+        TEST_ASSERT_TRUE_MESSAGE(calls < 2000, "flame did not finish");
+    }
+    TEST_ASSERT_EQUAL_INT(cfg::FLAME_STEPS, calls + 1);
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "a patch was still dimmed on the last frame");
+    }
+}
+
+static void test_flame_patch_dips_to_60_percent_with_soft_edges(void) {
+    int minAt[Frame::kSize];
+    const uint32_t breathMs = runOnePatch(false, minAt);
+    // The shortest breath is ~3 s (the ends are too shallow to see).
+    TEST_ASSERT_TRUE_MESSAGE(breathMs >= 2700 && breathMs <= 3000, "the shortest breath is not ~3 s");
+    TEST_ASSERT_EQUAL_UINT8(153, cfg::FLAME_FLOOR);  // 60 % to the eye, the old breathe depth
+    TEST_ASSERT_EQUAL_UINT8(3, cfg::FLAME_EDGE);
+    const int depth = 255 - cfg::FLAME_FLOOR;
+    const int width = cfg::FLAME_WIDTH_MIN;
+    for (int j = 0; j < width; ++j) {
+        const int fromOutside = j < width - 1 - j ? j : width - 1 - j;
+        const int want = fromOutside < cfg::FLAME_EDGE
+                             ? 255 - depth * (fromOutside + 1) / (cfg::FLAME_EDGE + 1)  // 1/4, 2/4, 3/4
+                             : cfg::FLAME_FLOOR;
+        TEST_ASSERT_INT_WITHIN_MESSAGE(3, want, minAt[50 + j], "not a flat core with even soft edges");
+    }
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        if (i < 50 || i >= 50 + width) TEST_ASSERT_EQUAL_INT_MESSAGE(255, minAt[i], "a pixel outside the patch dimmed");
+    }
+}
+
+static void test_flame_patch_is_10_to_15_pixels_edges_included_3_to_5_s(void) {
+    TEST_ASSERT_EQUAL_UINT8(10, cfg::FLAME_WIDTH_MIN);
+    TEST_ASSERT_EQUAL_UINT8(15, cfg::FLAME_WIDTH_MAX);
+    int minAt[Frame::kSize];
+    const uint32_t breathMs = runOnePatch(true, minAt);
+    TEST_ASSERT_TRUE_MESSAGE(breathMs >= 4650 && breathMs <= 5010, "the longest breath is not ~5 s");
+    int dimmed = 0;
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        if (minAt[i] < 255) ++dimmed;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(cfg::FLAME_WIDTH_MAX, dimmed, "the widest patch is not FLAME_WIDTH_MAX pixels");
+    for (int j = cfg::FLAME_EDGE; j < cfg::FLAME_WIDTH_MAX - cfg::FLAME_EDGE; ++j) {
+        TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::FLAME_FLOOR, minAt[50 + j], "the core did not reach 60 %");
+    }
+}
+
+// About 4-5 patches at any moment, each on its own clock, with full-colour
+// pixels between them.
+static void test_flame_patches_are_apart_and_staggered(void) {
+    s_lcg = 777;
+    Flame fx;
+    Frame f;
+    EffectContext ctx{kMakeup, lcgRandom};
+    fx.begin(ctx);
+    for (int i = 0; i < 150; ++i) fx.step(f, ctx);  // past the ramp-up
+    long runsTotal = 0;
+    int samples = 0, maxDistinct = 0;
+    for (int step = 0; step < 300; ++step) {
+        fx.step(f, ctx);
+        int start = -1;
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            if (f[i].w == 255) {
+                start = i;
+                break;
+            }
+        }
+        TEST_ASSERT_TRUE_MESSAGE(start >= 0, "the whole ring dimmed");
+        // Walk the ring from a full-colour pixel: runs of dimmed pixels are
+        // the visible patches.
+        int runs = 0, runLen = 0, runMin = 255, gap = 0, leadingGap = -1, distinct = 0;
+        bool seen[256] = {false};
+        for (uint16_t k = 0; k < Frame::kSize; ++k) {
+            const uint8_t w = f[(start + k) % Frame::kSize].w;
+            if (w < 255) {
+                if (runLen == 0) {
+                    ++runs;
+                    if (leadingGap < 0) leadingGap = gap;
+                    else TEST_ASSERT_TRUE_MESSAGE(gap >= cfg::FLAME_MIN_GAP, "two patches touch");
+                    runMin = 255;
+                }
+                ++runLen;
+                if (w < runMin) runMin = w;
+                gap = 0;
+            } else {
+                if (runLen > 0) {
+                    TEST_ASSERT_TRUE_MESSAGE(runLen <= cfg::FLAME_WIDTH_MAX, "a patch wider than FLAME_WIDTH_MAX");
+                    if (!seen[runMin]) {
+                        seen[runMin] = true;
+                        ++distinct;
+                    }
+                    runLen = 0;
+                }
+                ++gap;
+            }
+        }
+        if (runs >= 2) TEST_ASSERT_TRUE_MESSAGE(gap + leadingGap >= cfg::FLAME_MIN_GAP, "two patches touch");
+        TEST_ASSERT_TRUE_MESSAGE(runs <= cfg::FLAME_MAX_PATCHES, "more patches than FLAME_MAX_PATCHES");
+        runsTotal += runs;
+        ++samples;
+        if (distinct > maxDistinct) maxDistinct = distinct;
+    }
+    const long averageX10 = runsTotal * 10 / samples;
+    TEST_ASSERT_TRUE_MESSAGE(averageX10 >= 40, "fewer than ~4 patches at a time: the effect is thin");
+    TEST_ASSERT_TRUE_MESSAGE(averageX10 <= 56, "more than ~5 patches at a time: the ring is packed");
+    TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 3, "the patches breathe in step instead of on their own clocks");
+}
+
+static void test_flame_moves_smoothly_and_never_below_60_percent(void) {
+    s_lcg = 4242;
+    Flame fx;
+    Frame f;
+    EffectContext ctx{kMakeup, lcgRandom};
+    fx.begin(ctx);
+    // The steepest a cosine dip can move per step, plus rounding.
+    const int maxStep = static_cast<int>(3.1416f * (255 - cfg::FLAME_FLOOR) / cfg::FLAME_DIP_MIN_STEPS) + 2;
+    uint8_t prev[Frame::kSize];
+    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = 255;
+    bool dipped = false;
+    while (fx.step(f, ctx)) {
+        for (uint16_t i = 0; i < Frame::kSize; ++i) {
+            const int l = lightness8(f[i].w);
+            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::FLAME_FLOOR), "dipped below 60 %");
+            TEST_ASSERT_INT_WITHIN_MESSAGE(maxStep, prev[i], l, "a patch jumped instead of breathing");
+            TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
+            if (l < 255) dipped = true;
+            prev[i] = static_cast<uint8_t>(l);
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(dipped, "nothing breathed");
+}
+
 // --- Comet (v1.2.0): a white head with a fading tail flies one lap ----------
 // Since v1.3.0 the tail fades evenly to the eye (linear in perceived
 // brightness, CIE 1931) instead of the hand-made quadratic PWM curve.
@@ -722,22 +850,10 @@ static void test_fade_alpha_ramps_in_and_out(void) {
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, fadeAlpha(100, 100, 10), "the last frame must be the plain base");
 }
 
-// A quarter of the way into a breath the cosine is at half its swing: the
-// eye must see the midpoint between full and the floor.
-static void test_breathe_curve_is_even_to_the_eye(void) {
-    Breathe fx;
-    Frame f;
-    EffectContext ctx{kMakeup, zeroRandom};
-    fx.begin(ctx);
-    for (int i = 0; i <= cfg::BREATHE_CYCLE_STEPS / 4; ++i) fx.step(f, ctx);  // renders step 50
-    const int midpoint = cfg::BREATHE_MIN_LEVEL + (255 - cfg::BREATHE_MIN_LEVEL) / 2;
-    TEST_ASSERT_INT_WITHIN_MESSAGE(2, midpoint, lightness8(f[0].w), "the breath is not even to the eye");
-}
-
 static void test_registry_names_roundtrip(void) {
-    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Breathe,
+    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Flame,
                             EffectId::Embers, EffectId::Comet};
-    const char* expectedNames[] = {"dark", "rainbow", "wave", "breathe", "embers", "comet"};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "flame", "embers", "comet"};
     for (int i = 0; i < 6; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
@@ -751,6 +867,7 @@ static void test_registry_names_roundtrip(void) {
     TEST_ASSERT_NULL(effectInstance(EffectId::None));
     TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("bogus"));
     TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("Dark"));  // case-sensitive
+    TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("breathe"));  // replaced by flame in v1.4.0
 
     TEST_ASSERT_EQUAL_STRING("solid", baseModeName(BaseMode::Solid));
     TEST_ASSERT_EQUAL_STRING("makeup", baseModeName(BaseMode::Makeup));
@@ -766,21 +883,21 @@ static uint32_t cyclingRandom(uint32_t bound) {
 
 static void test_random_effect_covers_all(void) {
     s_cycleIdx = 0;
-    bool sawDark = false, sawRainbow = false, sawWave = false, sawBreathe = false, sawEmbers = false,
+    bool sawDark = false, sawRainbow = false, sawWave = false, sawFlame = false, sawEmbers = false,
          sawComet = false;
     for (int i = 0; i < 6; ++i) {
         EffectId id = randomEffect(cyclingRandom);
         if (id == EffectId::Dark) sawDark = true;
         else if (id == EffectId::Rainbow) sawRainbow = true;
         else if (id == EffectId::Wave) sawWave = true;
-        else if (id == EffectId::Breathe) sawBreathe = true;
+        else if (id == EffectId::Flame) sawFlame = true;
         else if (id == EffectId::Embers) sawEmbers = true;
         else if (id == EffectId::Comet) sawComet = true;
     }
     TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
     TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
     TEST_ASSERT_TRUE_MESSAGE(sawWave, "randomEffect never returned Wave");
-    TEST_ASSERT_TRUE_MESSAGE(sawBreathe, "randomEffect never returned Breathe");
+    TEST_ASSERT_TRUE_MESSAGE(sawFlame, "randomEffect never returned Flame");
     TEST_ASSERT_TRUE_MESSAGE(sawEmbers, "randomEffect never returned Embers");
     TEST_ASSERT_TRUE_MESSAGE(sawComet, "randomEffect never returned Comet");
 }
@@ -803,14 +920,15 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_wave_fades_back_to_base);
     RUN_TEST(test_wave_meeting_point_not_darker_than_single_wave);
     RUN_TEST(test_wave_golden_frames);
-    RUN_TEST(test_breathe_finishes_after_three_cycles);
-    RUN_TEST(test_breathe_starts_full_and_dips_at_half_cycle);
-    RUN_TEST(test_breathe_moves_smoothly_and_never_below_the_floor);
-    RUN_TEST(test_breathe_curve_is_even_to_the_eye);
     RUN_TEST(test_embers_starts_and_ends_on_the_plain_base);
     RUN_TEST(test_embers_coal_dips_to_10_percent_with_soft_edges);
     RUN_TEST(test_embers_are_sparse_and_staggered);
     RUN_TEST(test_embers_move_smoothly_and_never_below_10_percent);
+    RUN_TEST(test_flame_starts_and_ends_on_the_plain_base);
+    RUN_TEST(test_flame_patch_dips_to_60_percent_with_soft_edges);
+    RUN_TEST(test_flame_patch_is_10_to_15_pixels_edges_included_3_to_5_s);
+    RUN_TEST(test_flame_patches_are_apart_and_staggered);
+    RUN_TEST(test_flame_moves_smoothly_and_never_below_60_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
     RUN_TEST(test_comet_head_is_white_with_a_tail_even_to_the_eye);

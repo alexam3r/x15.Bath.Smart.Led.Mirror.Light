@@ -1993,8 +1993,8 @@ static void test_last_effect_covers_auto_and_random_effects(void) {
     powerOnSettled(m, now);
     run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000 - now);  // the automatic one
     TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
-    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Breathe), now);
-    TEST_ASSERT_TRUE(EffectId::Breathe == m.snapshot().lastEffect);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Flame), now);
+    TEST_ASSERT_TRUE(EffectId::Flame == m.snapshot().lastEffect);
     m.apply(randomEffectCmd(), now);
     TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
 }

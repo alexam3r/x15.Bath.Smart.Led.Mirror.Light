@@ -31,14 +31,6 @@ constexpr uint16_t WAVE_RADIUS  = 18;
 constexpr uint16_t WAVE_CORE    = 3;
 constexpr uint32_t WAVE_STEP_MS = 45;
 
-// --- Breathe effect (v1.2.0) ------------------------------------------------
-// The whole ring breathes: cosine brightness 100 % -> BREATHE_MIN_LEVEL ->
-// 100 %, BREATHE_CYCLES cycles of BREATHE_CYCLE_STEPS steps each.
-constexpr uint32_t BREATHE_STEP_MS     = 20;
-constexpr uint16_t BREATHE_CYCLE_STEPS = 200;  // 4 s per breath
-constexpr uint8_t  BREATHE_CYCLES      = 3;
-constexpr uint8_t  BREATHE_MIN_LEVEL   = 153;  // 60 % to the eye (CIE 1931, v1.3.0)
-
 // --- Embers effect (v1.3.0, deeper with soft edges in v1.3.1) ---------------
 // Sparse smouldering coals: every step a new coal lights with probability
 // EMBERS_SPAWN_PER_MILLE (about one spot per twelve pixels at any moment).
@@ -58,6 +50,28 @@ constexpr uint8_t  EMBERS_DIP_MIN_STEPS   = 33;   // ~1 s
 constexpr uint8_t  EMBERS_DIP_MAX_STEPS   = 83;   // ~2.5 s
 constexpr uint8_t  EMBERS_EDGE            = 2;    // soft edge, pixels each side
 constexpr uint8_t  EMBERS_MIN_GAP         = 2 * EMBERS_EDGE + 1;
+
+// --- Flame effect (v1.4.0, replaces breathe) ---------------------------------
+// Wide patches breathe on their own clocks: every step a new patch appears
+// with probability FLAME_SPAWN_PER_MILLE at a random place at least
+// FLAME_MIN_GAP full-colour pixels clear of the others (about 4-5 at a time).
+// A patch is FLAME_WIDTH_MIN..MAX pixels wide including a soft edge of
+// FLAME_EDGE pixels each side (1/4, 2/4, 3/4 of the depth, even to the eye);
+// its flat core dims to FLAME_FLOOR and back along a cosine over
+// FLAME_DIP_MIN..MAX_STEPS. No new patches in the last FLAME_DIP_MAX_STEPS,
+// so the effect dies down on its own. ~20 s.
+constexpr uint32_t FLAME_STEP_MS         = 30;
+constexpr uint16_t FLAME_STEPS           = 667;  // ~20 s
+constexpr uint8_t  FLAME_MAX_PATCHES     = 8;
+constexpr uint16_t FLAME_SPAWN_PER_MILLE = 150;  // most tries land on a patch: ~4-5 at a time
+constexpr uint8_t  FLAME_FLOOR           = 153;  // 60 % to the eye, the breathe depth
+constexpr uint8_t  FLAME_DIP_MIN_STEPS   = 100;  // ~3 s
+constexpr uint8_t  FLAME_DIP_MAX_STEPS   = 167;  // ~5 s
+constexpr uint8_t  FLAME_WIDTH_MIN       = 10;   // pixels, soft edges included
+constexpr uint8_t  FLAME_WIDTH_MAX       = 15;
+constexpr uint8_t  FLAME_EDGE            = 3;    // soft edge, pixels each side
+constexpr uint8_t  FLAME_MIN_GAP         = 2;    // full-colour pixels between patches
+static_assert(FLAME_WIDTH_MIN > 2 * FLAME_EDGE, "a patch needs a flat core");
 
 // --- Comet effect (v1.2.0) --------------------------------------------------
 // A white head with a COMET_TAIL-pixel tail (fading evenly to the eye, v1.3.0) travels once around the
@@ -193,6 +207,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.3.2";
+constexpr char FW_VERSION[] = "1.4.0";
 
 }  // namespace cfg

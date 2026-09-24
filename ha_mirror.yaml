@@ -1,5 +1,5 @@
 # ============================================================
-# BATH MIRROR — ESP32-S3 Zero (SK6812 RGBW), прошивка v1.3.2
+# BATH MIRROR — ESP32-S3 Zero (SK6812 RGBW), прошивка v1.4.0
 # ============================================================
 # MQTT-сущности умного зеркала ванной. Только ручной YAML — HA MQTT Discovery
 # прошивка не публикует.
@@ -41,7 +41,8 @@ mqtt:
   light:
     # --- Зеркало: MQTT JSON Light (вкл/выкл, яркость 0..255, RGB, эффекты) ---
     # effect_list: solid/makeup — базовый режим (RGB / только белый канал W);
-    # dark/rainbow/wave/breathe/embers/comet — временные эффекты (4–20 с), после них state.effect снова solid/makeup;
+    # dark/rainbow/wave/flame/embers/comet — временные эффекты (4–20 с), после них state.effect снова solid/makeup;
+    # flame заменил breathe в v1.4.0 — прошивка v1.4.0+ имя breathe не понимает.
     # random — один из временных (в state отражается реально запущенный).
     - name: "Зеркало в душевой"
       unique_id: mirror_bath_flat8
@@ -63,7 +64,7 @@ mqtt:
         - dark
         - rainbow
         - wave
-        - breathe
+        - flame
         - embers
         - comet
       transition: false

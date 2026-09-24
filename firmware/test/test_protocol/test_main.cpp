@@ -252,10 +252,15 @@ static void test_light_effect_names(void) {
     TEST_ASSERT_TRUE(EffectRequest::Temporary == rainbow.effect);
     TEST_ASSERT_TRUE(EffectId::Rainbow == rainbow.effectId);
 
+    LightCommand flame;
+    TEST_ASSERT_TRUE(lightOf("{\"effect\": \"flame\"}", flame));
+    TEST_ASSERT_TRUE(EffectRequest::Temporary == flame.effect);
+    TEST_ASSERT_TRUE(EffectId::Flame == flame.effectId);
+
+    // breathe was replaced by flame in v1.4.0: its name is unknown now and ignored.
     LightCommand breathe;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"breathe\"}", breathe));
-    TEST_ASSERT_TRUE(EffectRequest::Temporary == breathe.effect);
-    TEST_ASSERT_TRUE(EffectId::Breathe == breathe.effectId);
+    TEST_ASSERT_TRUE(EffectRequest::None == breathe.effect);
 
     LightCommand embers;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"embers\"}", embers));
@@ -373,7 +378,7 @@ static void test_state_json_matches_5_3(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"OFF\",\"brightness\":255,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"solid\","
-        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.3.2\","
+        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.4.0\","
         "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"OFF\"}",
         buf);
 }
@@ -398,7 +403,7 @@ static void test_state_json_running_effect_and_makeup(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"ON\",\"brightness\":128,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":10,\"g\":20,\"b\":30},\"effect\":\"rainbow\","
-        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.3.2\","
+        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.4.0\","
         "\"brightness_pct\":50,\"moveDetection\":\"OFF\",\"makeup\":\"ON\"}",
         buf);
 }
@@ -498,7 +503,7 @@ static void test_diag_json(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"uptime_s\":3723,\"rssi\":-61,\"reset_reason\":\"POWERON\","
         "\"free_heap\":231000,\"min_free_heap\":198000,\"max_alloc_heap\":110592,"
-        "\"last_effect\":\"embers\",\"fw\":\"1.3.2\"}",
+        "\"last_effect\":\"embers\",\"fw\":\"1.4.0\"}",
         buf);
     TEST_ASSERT_EQUAL_UINT32(n, strlen(buf));
     // Nothing started since boot.
@@ -522,7 +527,7 @@ static void test_diag_json_worst_case_fits_the_cap(void) {
     d.rssi = -128;
     d.resetReason = 6;  // TASK_WDT, the longest name
     d.freeHeap = d.minFreeHeap = d.maxAllocHeap = 4294967295u;
-    d.lastEffect = EffectId::Rainbow;  // the longest effect name (7 letters, like breathe)
+    d.lastEffect = EffectId::Rainbow;  // the longest effect name (7 letters)
     char buf[cfg::DIAG_JSON_CAP];
     TEST_ASSERT_TRUE(buildDiagJson(d, buf, sizeof(buf)) > 0);
 }

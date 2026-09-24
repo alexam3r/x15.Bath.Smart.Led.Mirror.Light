@@ -5,18 +5,18 @@
 #include <cstddef>
 #include <cstring>
 
-#include "Breathe.h"
 #include "Comet.h"
 #include "Embers.h"
+#include "Flame.h"
 #include "Snake.h"
 #include "Wave.h"
 
 namespace {
 
-Breathe      s_breathe;
 Comet        s_comet;
 DarkSnake    s_dark;
 Embers       s_embers;
+Flame        s_flame;
 RainbowSnake s_rainbow;
 Wave         s_wave;
 
@@ -24,7 +24,7 @@ const EffectEntry kEffects[] = {
     {EffectId::Dark,    "dark",    &s_dark},
     {EffectId::Rainbow, "rainbow", &s_rainbow},
     {EffectId::Wave,    "wave",    &s_wave},
-    {EffectId::Breathe, "breathe", &s_breathe},
+    {EffectId::Flame,   "flame",   &s_flame},
     {EffectId::Embers,  "embers",  &s_embers},
     {EffectId::Comet,   "comet",   &s_comet},
 };
