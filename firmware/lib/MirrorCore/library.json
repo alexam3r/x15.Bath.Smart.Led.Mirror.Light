@@ -1,6 +1,6 @@
 {
   "name": "MirrorCore",
-  "version": "1.0.0",
+  "version": "1.4.2",
   "description": "Platform-independent core of the Smart Mirror firmware (state machine, effects, protocol) — no Arduino/FreeRTOS dependency, builds under both native and espressif32.",
   "frameworks": "*",
   "platforms": "*"
