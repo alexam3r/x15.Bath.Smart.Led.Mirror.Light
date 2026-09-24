@@ -570,11 +570,12 @@ static void test_embers_move_smoothly_and_never_below_10_percent(void) {
     }
 }
 
-// --- Flame (v1.4.0, replaces breathe): wide patches breathe on their own clocks
-// A patch is FLAME_WIDTH_MIN..MAX pixels wide including a soft edge of
-// FLAME_EDGE pixels each side (1/4, 2/4, 3/4 of the depth, even to the eye);
-// its flat core dims to 60 % to the eye (the old breathe depth) and back
-// along a cosine over 3..5 s. About 4-5 patches at a time, never touching.
+// --- Flame (v1.4.0, replaces breathe; wider and deeper in v1.4.1) -----------
+// Patches breathe on their own clocks: a flat core of FLAME_CORE_MIN..MAX
+// pixels with a soft edge each side that grows with the core (10 -> 3,
+// 11 -> 4, 12 -> 4 pixels; even perceived steps), 16..20 pixels in all. The
+// core dims to 30 % to the eye (v1.4.0: 60 %) and back along a cosine over
+// 3..5 s. About 4 patches at a time, never touching.
 
 // Exactly one patch, starting at pixel 50: the narrowest and shortest, or the
 // widest and longest.
@@ -582,7 +583,7 @@ static bool s_biggest = false;
 static uint32_t onePatchRandom(uint32_t bound) {
     if (bound == 1000) return (s_spawnRolls++ == 0) ? 0 : 999;  // spawn once, never again
     if (bound == cfg::TOTAL_LEDS) return 50;
-    if (bound == cfg::FLAME_WIDTH_MAX - cfg::FLAME_WIDTH_MIN + 1) return s_biggest ? bound - 1 : 0;
+    if (bound == cfg::FLAME_CORE_MAX - cfg::FLAME_CORE_MIN + 1) return s_biggest ? bound - 1 : 0;
     if (bound == cfg::FLAME_DIP_MAX_STEPS - cfg::FLAME_DIP_MIN_STEPS + 1) return s_biggest ? bound - 1 : 0;
     return 0;
 }
@@ -598,9 +599,9 @@ static uint32_t runOnePatch(bool biggest, int minAt[Frame::kSize]) {
     EffectContext ctx{kMakeup, onePatchRandom};
     fx.begin(ctx);
     for (uint16_t i = 0; i < Frame::kSize; ++i) minAt[i] = 255;
-    const int width = biggest ? cfg::FLAME_WIDTH_MAX : cfg::FLAME_WIDTH_MIN;
-    const int coreFirst = 50 + cfg::FLAME_EDGE;
-    const int coreLast = 50 + width - 1 - cfg::FLAME_EDGE;
+    const int core = biggest ? cfg::FLAME_CORE_MAX : cfg::FLAME_CORE_MIN;
+    const int coreFirst = 50 + cfg::flameEdge(core);
+    const int coreLast = coreFirst + core - 1;
     bool rising = false;
     int prevCore = 255;
     uint32_t dimmedFrames = 0;
@@ -608,11 +609,11 @@ static uint32_t runOnePatch(bool biggest, int minAt[Frame::kSize]) {
         for (int i = coreFirst + 1; i <= coreLast; ++i) {
             TEST_ASSERT_TRUE_MESSAGE(f[i] == f[coreFirst], "the core is not flat");
         }
-        const int core = lightness8(f[coreFirst].w);
-        if (core < 255) ++dimmedFrames;
-        if (core > prevCore) rising = true;
-        TEST_ASSERT_TRUE_MESSAGE(!(rising && core < prevCore), "the patch dipped twice");
-        prevCore = core;
+        const int level = lightness8(f[coreFirst].w);
+        if (level < 255) ++dimmedFrames;
+        if (level > prevCore) rising = true;
+        TEST_ASSERT_TRUE_MESSAGE(!(rising && level < prevCore), "the patch dipped twice");
+        prevCore = level;
         for (uint16_t i = 0; i < Frame::kSize; ++i) {
             const int l = lightness8(f[i].w);
             if (l < minAt[i]) minAt[i] = l;
@@ -620,6 +621,23 @@ static uint32_t runOnePatch(bool biggest, int minAt[Frame::kSize]) {
     }
     TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[coreFirst], "the patch is not back to base at the end");
     return dimmedFrames * cfg::FLAME_STEP_MS;
+}
+
+// The deepest profile of a patch starting at pixel 50: the soft edge in even
+// perceived steps (1/(edge+1) .. edge/(edge+1) of the depth), a flat core at
+// the floor, nothing outside.
+static void assertPatchProfile(const int minAt[Frame::kSize], int core) {
+    const int edge = cfg::flameEdge(core);
+    const int width = core + 2 * edge;
+    const int depth = 255 - cfg::FLAME_FLOOR;
+    for (int j = 0; j < width; ++j) {
+        const int fromOutside = j < width - 1 - j ? j : width - 1 - j;
+        const int want = fromOutside < edge ? 255 - depth * (fromOutside + 1) / (edge + 1) : cfg::FLAME_FLOOR;
+        TEST_ASSERT_INT_WITHIN_MESSAGE(3, want, minAt[50 + j], "not a flat core with even soft edges");
+    }
+    for (uint16_t i = 0; i < Frame::kSize; ++i) {
+        if (i < 50 || i >= 50 + width) TEST_ASSERT_EQUAL_INT_MESSAGE(255, minAt[i], "a pixel outside the patch dimmed");
+    }
 }
 
 static void test_flame_starts_and_ends_on_the_plain_base(void) {
@@ -643,44 +661,29 @@ static void test_flame_starts_and_ends_on_the_plain_base(void) {
     }
 }
 
-static void test_flame_patch_dips_to_60_percent_with_soft_edges(void) {
+static void test_flame_patch_dips_to_30_percent_with_soft_edges(void) {
+    TEST_ASSERT_EQUAL_UINT8(77, cfg::FLAME_FLOOR);  // 30 % to the eye (v1.4.0: 60 %)
     int minAt[Frame::kSize];
     const uint32_t breathMs = runOnePatch(false, minAt);
     // The shortest breath is ~3 s (the ends are too shallow to see).
     TEST_ASSERT_TRUE_MESSAGE(breathMs >= 2700 && breathMs <= 3000, "the shortest breath is not ~3 s");
-    TEST_ASSERT_EQUAL_UINT8(153, cfg::FLAME_FLOOR);  // 60 % to the eye, the old breathe depth
-    TEST_ASSERT_EQUAL_UINT8(3, cfg::FLAME_EDGE);
-    const int depth = 255 - cfg::FLAME_FLOOR;
-    const int width = cfg::FLAME_WIDTH_MIN;
-    for (int j = 0; j < width; ++j) {
-        const int fromOutside = j < width - 1 - j ? j : width - 1 - j;
-        const int want = fromOutside < cfg::FLAME_EDGE
-                             ? 255 - depth * (fromOutside + 1) / (cfg::FLAME_EDGE + 1)  // 1/4, 2/4, 3/4
-                             : cfg::FLAME_FLOOR;
-        TEST_ASSERT_INT_WITHIN_MESSAGE(3, want, minAt[50 + j], "not a flat core with even soft edges");
-    }
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        if (i < 50 || i >= 50 + width) TEST_ASSERT_EQUAL_INT_MESSAGE(255, minAt[i], "a pixel outside the patch dimmed");
-    }
+    assertPatchProfile(minAt, cfg::FLAME_CORE_MIN);  // core 10, edge 3: 16 pixels
 }
 
-static void test_flame_patch_is_10_to_15_pixels_edges_included_3_to_5_s(void) {
-    TEST_ASSERT_EQUAL_UINT8(10, cfg::FLAME_WIDTH_MIN);
-    TEST_ASSERT_EQUAL_UINT8(15, cfg::FLAME_WIDTH_MAX);
+static void test_flame_core_10_to_12_with_a_proportional_edge_3_to_5_s(void) {
+    TEST_ASSERT_EQUAL_UINT8(10, cfg::FLAME_CORE_MIN);
+    TEST_ASSERT_EQUAL_UINT8(12, cfg::FLAME_CORE_MAX);
+    TEST_ASSERT_EQUAL_UINT8(3, cfg::flameEdge(10));
+    TEST_ASSERT_EQUAL_UINT8(4, cfg::flameEdge(11));
+    TEST_ASSERT_EQUAL_UINT8(4, cfg::flameEdge(12));
+    TEST_ASSERT_EQUAL_UINT8(20, cfg::FLAME_WIDTH_MAX);
     int minAt[Frame::kSize];
     const uint32_t breathMs = runOnePatch(true, minAt);
     TEST_ASSERT_TRUE_MESSAGE(breathMs >= 4650 && breathMs <= 5010, "the longest breath is not ~5 s");
-    int dimmed = 0;
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        if (minAt[i] < 255) ++dimmed;
-    }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(cfg::FLAME_WIDTH_MAX, dimmed, "the widest patch is not FLAME_WIDTH_MAX pixels");
-    for (int j = cfg::FLAME_EDGE; j < cfg::FLAME_WIDTH_MAX - cfg::FLAME_EDGE; ++j) {
-        TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::FLAME_FLOOR, minAt[50 + j], "the core did not reach 60 %");
-    }
+    assertPatchProfile(minAt, cfg::FLAME_CORE_MAX);  // core 12, edge 4: 20 pixels
 }
 
-// About 4-5 patches at any moment, each on its own clock, with full-colour
+// About 4 patches at any moment, each on its own clock, with full-colour
 // pixels between them.
 static void test_flame_patches_are_apart_and_staggered(void) {
     s_lcg = 777;
@@ -736,12 +739,12 @@ static void test_flame_patches_are_apart_and_staggered(void) {
         if (distinct > maxDistinct) maxDistinct = distinct;
     }
     const long averageX10 = runsTotal * 10 / samples;
-    TEST_ASSERT_TRUE_MESSAGE(averageX10 >= 40, "fewer than ~4 patches at a time: the effect is thin");
-    TEST_ASSERT_TRUE_MESSAGE(averageX10 <= 56, "more than ~5 patches at a time: the ring is packed");
+    TEST_ASSERT_TRUE_MESSAGE(averageX10 >= 38, "fewer than ~4 patches at a time: the effect is thin");
+    TEST_ASSERT_TRUE_MESSAGE(averageX10 <= 46, "more than ~4 patches at a time: the ring is packed");
     TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 3, "the patches breathe in step instead of on their own clocks");
 }
 
-static void test_flame_moves_smoothly_and_never_below_60_percent(void) {
+static void test_flame_moves_smoothly_and_never_below_30_percent(void) {
     s_lcg = 4242;
     Flame fx;
     Frame f;
@@ -755,7 +758,7 @@ static void test_flame_moves_smoothly_and_never_below_60_percent(void) {
     while (fx.step(f, ctx)) {
         for (uint16_t i = 0; i < Frame::kSize; ++i) {
             const int l = lightness8(f[i].w);
-            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::FLAME_FLOOR), "dipped below 60 %");
+            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::FLAME_FLOOR), "dipped below 30 %");
             TEST_ASSERT_INT_WITHIN_MESSAGE(maxStep, prev[i], l, "a patch jumped instead of breathing");
             TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
             if (l < 255) dipped = true;
@@ -925,10 +928,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_embers_are_sparse_and_staggered);
     RUN_TEST(test_embers_move_smoothly_and_never_below_10_percent);
     RUN_TEST(test_flame_starts_and_ends_on_the_plain_base);
-    RUN_TEST(test_flame_patch_dips_to_60_percent_with_soft_edges);
-    RUN_TEST(test_flame_patch_is_10_to_15_pixels_edges_included_3_to_5_s);
+    RUN_TEST(test_flame_patch_dips_to_30_percent_with_soft_edges);
+    RUN_TEST(test_flame_core_10_to_12_with_a_proportional_edge_3_to_5_s);
     RUN_TEST(test_flame_patches_are_apart_and_staggered);
-    RUN_TEST(test_flame_moves_smoothly_and_never_below_60_percent);
+    RUN_TEST(test_flame_moves_smoothly_and_never_below_30_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
     RUN_TEST(test_comet_head_is_white_with_a_tail_even_to_the_eye);
