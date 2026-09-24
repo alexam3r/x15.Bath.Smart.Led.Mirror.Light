@@ -30,7 +30,18 @@ protected:
     Rgbw renderPixel(Rgbw base, uint16_t dist, float alpha) const override;
 };
 
+// v1.4.2: every start shuffles the six key colours (red, yellow, green,
+// cyan, blue, magenta; v27 always ran them in that order from the head).
+// Between two keys the hue runs the short way round the wheel, and the tail
+// runs back to the head colour. A RandomFn returning 0 keeps the v27 order.
 class RainbowSnake : public SnakeBase {
+public:
+    void begin(const EffectContext& ctx) override;
+
 protected:
     Rgbw renderPixel(Rgbw base, uint16_t dist, float alpha) const override;
+
+private:
+    static constexpr uint8_t kColours = 6;
+    uint8_t order_[kColours] = {0, 1, 2, 3, 4, 5};  // key colours from the head
 };

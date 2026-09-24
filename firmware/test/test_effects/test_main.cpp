@@ -34,6 +34,13 @@ static Rgbw rgbw(uint8_t r, uint8_t g, uint8_t b, uint8_t w) { return Rgbw{r, g,
 // (random(2)==0), wave center = CENTERS[0]. Used for reproducible goldens.
 static uint32_t zeroRandom(uint32_t /*bound*/) { return 0; }
 
+// Deterministic stand-in for esp_random.
+static uint32_t s_lcg = 12345;
+static uint32_t lcgRandom(uint32_t bound) {
+    s_lcg = s_lcg * 1103515245u + 12345u;
+    return (s_lcg >> 16) % bound;
+}
+
 // --- SlideAnimation (Ruling R3) ---------------------------------------------
 // The lit arc grows from the centre in both directions, one pixel per step,
 // with a soft edge of SLIDE_EDGE - 1 lit pixels on each front. Since v1.3.2
@@ -307,6 +314,120 @@ static void test_rainbow_snake_golden_frames(void) {
     TEST_ASSERT_TRUE(rgbw(255, 9, 3, 0) == f200[32]);
 }
 
+// --- Rainbow colour order (v1.4.2) --------------------------------------------
+// Every start shuffles the six key colours (red, yellow, green, cyan, blue,
+// magenta), 10 pixels apart along the snake; between two keys the colour
+// runs the short way round the wheel, and the tail runs back to the head
+// colour. With a zero RandomFn the order stays the v27 one (goldens above).
+
+// Key colour c (0 red .. 5 magenta) and any point of the 60-unit wheel.
+static Rgbw wheelColour(int wheel) {
+    return hsv(static_cast<uint16_t>(((wheel % 60 + 60) % 60) * 65535L / 60));
+}
+static Rgbw keyColour(int c) { return wheelColour(10 * c); }
+
+// Queued values in order, then 0.
+static uint32_t s_script[8];
+static int s_scriptLen = 0, s_scriptPos = 0;
+static uint32_t scriptedRandom(uint32_t bound) {
+    const uint32_t v = s_scriptPos < s_scriptLen ? s_script[s_scriptPos++] : 0;
+    TEST_ASSERT_TRUE_MESSAGE(v < bound, "scripted value out of range");
+    return v;
+}
+
+// Start 0 and direction +1 (the first two draws of begin), the shuffle from
+// the LCG.
+static int s_draws = 0;
+static uint32_t shuffleOnlyRandom(uint32_t bound) { return (s_draws++ < 2) ? 0 : lcgRandom(bound); }
+
+// Renders the snake at step 100: alpha 1, head at pixel 100, so the pixel
+// `d` behind the head is f[100 - d].
+static void rainbowAtFullAlpha(RandomFn random, Frame& f) {
+    RainbowSnake snake;
+    EffectContext ctx{kSolid, random};
+    snake.begin(ctx);
+    for (int i = 0; i < 101; ++i) snake.step(f, ctx);
+}
+
+static void test_rainbow_snake_shuffles_its_six_colours(void) {
+    // Start 0, direction +1, then the shuffle draws 5, 3, 1, 0, 1: blue,
+    // magenta, cyan, green, yellow, red from the head.
+    const uint32_t script[] = {0, 0, 5, 3, 1, 0, 1};
+    for (int i = 0; i < 7; ++i) s_script[i] = script[i];
+    s_scriptLen = 7;
+    s_scriptPos = 0;
+    Frame f;
+    rainbowAtFullAlpha(scriptedRandom, f);
+    const int want[6] = {4, 5, 3, 2, 1, 0};
+    for (int k = 0; k < 6; ++k) {
+        TEST_ASSERT_TRUE_MESSAGE(keyColour(want[k]) == f[100 - 10 * k], "a key colour is not where the shuffle put it");
+    }
+    // blue (40) -> magenta (50), neighbours: one wheel unit per pixel.
+    TEST_ASSERT_TRUE(wheelColour(45) == f[100 - 5]);
+    // magenta (50) -> cyan (30) the short way, through blue (40).
+    TEST_ASSERT_TRUE_MESSAGE(wheelColour(40) == f[100 - 15], "not the short way round the wheel");
+    // The tail runs back to the head colour: red (0) -> blue (40) through magenta.
+    TEST_ASSERT_TRUE_MESSAGE(wheelColour(50) == f[100 - 55], "the tail does not run back to the head colour");
+}
+
+// Every start draws a fresh order: over 200 starts most orders differ and
+// every colour leads the snake now and then.
+static void test_rainbow_snake_order_changes_every_start(void) {
+    s_lcg = 2024;
+    static bool seen[6 * 6 * 6 * 6 * 6 * 6];
+    for (bool& b : seen) b = false;
+    int distinct = 0;
+    int leads[6] = {0};
+    for (int run = 0; run < 200; ++run) {
+        s_draws = 0;
+        Frame f;
+        rainbowAtFullAlpha(shuffleOnlyRandom, f);
+        int code = 0;
+        bool used[6] = {false};
+        for (int k = 0; k < 6; ++k) {
+            int c = -1;
+            for (int t = 0; t < 6; ++t) {
+                if (keyColour(t) == f[100 - 10 * k]) c = t;
+            }
+            TEST_ASSERT_TRUE_MESSAGE(c >= 0, "a key pixel is not one of the six colours");
+            TEST_ASSERT_FALSE_MESSAGE(used[c], "a colour appears twice");
+            used[c] = true;
+            if (k == 0) ++leads[c];
+            code = code * 6 + c;
+        }
+        if (!seen[code]) {
+            seen[code] = true;
+            ++distinct;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(distinct >= 150, "the order barely changes between starts");
+    for (int c = 0; c < 6; ++c) {
+        TEST_ASSERT_TRUE_MESSAGE(leads[c] >= 15, "a colour (almost) never leads the snake");  // ~33 each
+    }
+}
+
+// Saturated colours all along the snake and no jumps: neighbours are at most
+// three wheel units (~77 per channel) apart.
+static void test_rainbow_snake_is_smooth_and_saturated(void) {
+    s_lcg = 99;
+    for (int run = 0; run < 50; ++run) {
+        s_draws = 0;
+        Frame f;
+        rainbowAtFullAlpha(shuffleOnlyRandom, f);
+        for (int d = 0; d < static_cast<int>(cfg::SNAKE_SIZE); ++d) {
+            const Rgbw p = f[100 - d];
+            const uint8_t hi = p.r > p.g ? (p.r > p.b ? p.r : p.b) : (p.g > p.b ? p.g : p.b);
+            const uint8_t lo = p.r < p.g ? (p.r < p.b ? p.r : p.b) : (p.g < p.b ? p.g : p.b);
+            TEST_ASSERT_TRUE_MESSAGE(hi == 255 && lo == 0 && p.w == 0, "a washed-out colour on the snake");
+            if (d == 0) continue;
+            const Rgbw q = f[100 - d + 1];
+            TEST_ASSERT_INT_WITHIN_MESSAGE(80, q.r, p.r, "the colour jumps between neighbours");
+            TEST_ASSERT_INT_WITHIN_MESSAGE(80, q.g, p.g, "the colour jumps between neighbours");
+            TEST_ASSERT_INT_WITHIN_MESSAGE(80, q.b, p.b, "the colour jumps between neighbours");
+        }
+    }
+}
+
 // --- Wave (dark pulse) ------------------------------------------------------
 
 static float waveDarkFactor(uint16_t i, uint16_t center) {
@@ -440,13 +561,6 @@ static void test_wave_golden_frames(void) {
 // clock. Levels are perceived brightness (CIE 1931); in makeup the white
 // channel is the multiplier itself, so lightness8(f[i].w) reads a pixel's
 // perceived level directly.
-
-// Deterministic stand-in for esp_random.
-static uint32_t s_lcg = 12345;
-static uint32_t lcgRandom(uint32_t bound) {
-    s_lcg = s_lcg * 1103515245u + 12345u;
-    return (s_lcg >> 16) % bound;
-}
 
 // Exactly one coal, at pixel 50, as deep and as short as allowed.
 static uint32_t s_spawnRolls = 0;
@@ -919,6 +1033,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_rainbow_snake_blends_with_base);
     RUN_TEST(test_dark_snake_golden_frames);
     RUN_TEST(test_rainbow_snake_golden_frames);
+    RUN_TEST(test_rainbow_snake_shuffles_its_six_colours);
+    RUN_TEST(test_rainbow_snake_order_changes_every_start);
+    RUN_TEST(test_rainbow_snake_is_smooth_and_saturated);
     RUN_TEST(test_wave_finishes_after_103_steps);
     RUN_TEST(test_wave_fades_back_to_base);
     RUN_TEST(test_wave_meeting_point_not_darker_than_single_wave);
