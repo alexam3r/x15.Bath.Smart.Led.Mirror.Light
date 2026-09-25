@@ -6,6 +6,7 @@
 
 #include <cstdint>
 
+#include "Blink.h"
 #include "Button.h"
 #include "Config.h"
 #include "Frame.h"
@@ -42,7 +43,11 @@ private:
     bool lit() const;  // SlideOn or On
     void tickGlitch(uint32_t now);
     void powerOn(uint32_t now);
+    void buttonPowerOn(uint32_t now);
     void powerOff(bool manual, uint32_t now);
+    void toggleNightModeFromButton(uint32_t now);
+    void startConfirmation(bool nightModeOn, uint32_t now);
+    void tickConfirmation(uint32_t now);
     void startEffect(EffectId id, uint32_t now);
     void startRandomEffect(uint32_t now);
     void applyDefaults();
@@ -83,6 +88,13 @@ private:
     Ramp     warn_;
     uint8_t  warnLevel_      = 255;
     uint32_t lastWarnStepMs_ = 0;
+
+    // Night-mode confirmation (v1.5.0): flashes on the dark ring after a
+    // button hold toggled night mode. A hold during the slide-out leaves it
+    // pending until OFF: 1 = night mode on, 2 = off, 0 = none.
+    Blink    blink_;
+    uint8_t  pendingBlink_    = 0;
+    uint32_t lastBlinkStepMs_ = 0;
 
     uint32_t lastActivity_     = 0;
     uint32_t lastIdle_         = 0;

@@ -139,6 +139,18 @@ bool isDark(const Frame& f) {
     return true;
 }
 
+// v1.5.0: the night-mode confirmation on the dark ring — the default warm
+// colour over the whole ring, no brighter than the SIGNAL_LEVEL peak.
+bool isConfirmationFrame(const Frame& f) {
+    const Rgbw peak = scale(Rgbw{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0}, cie8(cfg::SIGNAL_LEVEL));
+    const Rgbw& px = f[0];
+    if (px.r > peak.r || px.g > peak.g || px.b > peak.b || px.w != 0) return false;
+    for (uint16_t i = 1; i < Frame::kSize; ++i) {
+        if (!(f[i] == px)) return false;
+    }
+    return true;
+}
+
 // Longest run of each temporary effect in steps (section 4.2 table).
 uint32_t effectMaxSteps(EffectId id) {
     switch (id) {
@@ -234,6 +246,7 @@ struct Stats {
     uint64_t holdTicks = 0;
     uint64_t stuckButtons = 0;  // presses that outlasted HOLD_STUCK_MS
     uint64_t stuckPirs = 0;     // PIR HIGH phases that outlasted PIR_STUCK_MS
+    uint64_t nightToggles = 0;  // holds with the mirror off (v1.5.0)
     uint64_t lastHoldTickT = 0;
     uint64_t lastAutoOffT = 0;
 };
@@ -442,12 +455,33 @@ private:
         }
         activity();  // every button event (section 4.3)
         inputChangedPower(p0, p1);
+        const StateSnapshot s1 = m_.snapshot();
+        if (ev.type == ButtonEventType::Click && !isLit(p0) && isLit(p1) && !s1.automation) {
+            fail("a click switched the light on but left automation off (v1.5.0)");
+            return true;
+        }
         if (ev.type == ButtonEventType::HoldStart) {
             holdActive_ = true;
             ticksThisHold_ = 0;
-            if (night0) {  // Ruling R14: the hold that clears night mode starts the cooldown
-                cooldownOn_ = true;
-                cooldownStart_ = t_;
+            if (!isLit(p0)) {
+                // v1.5.0: a hold with the mirror off or sliding out toggles
+                // night mode and never touches power; the ring confirms it.
+                if (p1 != p0 || s1.nightMode == night0) {
+                    fail("hold from %s: power -> %s, night mode %d -> %d (expected a toggle, same power)",
+                         powerName(p0), powerName(p1), night0, s1.nightMode);
+                    return true;
+                }
+                ++stats.nightToggles;
+                if (p0 == PowerState::Off) {
+                    blinkOn_ = true;
+                    blinkStart_ = t_;
+                } else {
+                    blinkPending_ = true;
+                }
+                if (night0) {  // Ruling R14: the hold that clears night mode starts the cooldown
+                    cooldownOn_ = true;
+                    cooldownStart_ = t_;
+                }
             }
         } else if (ev.type == ButtonEventType::HoldEnd) {
             holdActive_ = false;
@@ -535,6 +569,11 @@ private:
                                 s.r, s.g, s.b, s.brightness, baseModeName(s.base), m_.shownBrightness_);
                 blackoutOn_ = true;
                 blackoutStart_ = t_;
+                if (blinkPending_) {
+                    blinkPending_ = false;
+                    blinkOn_ = true;
+                    blinkStart_ = t_;
+                }
                 note("OFF reached");
             } else {
                 return fail("tick() changed power %s -> %s", powerName(p0), powerName(p));
@@ -588,8 +627,18 @@ private:
         // --- Every power-on clears night mode; night mode ON powers off.
         if (isLit(p) && s.nightMode) return fail("lit with night mode on");
 
-        // --- OFF means dark.
-        if (p == PowerState::Off && !isDark(shown_)) return fail("OFF but the displayed frame is not dark");
+        // --- OFF means dark, except for the night-mode confirmation (v1.5.0):
+        // only right after a hold, only the warm flash, and any power-on
+        // ends it.
+        if (isLit(p)) blinkOn_ = blinkPending_ = false;
+        if (p == PowerState::Off && !isDark(shown_)) {
+            const uint64_t blinkMs = cfg::SIGNAL_ON_FLASH_MS > 2 * cfg::SIGNAL_OFF_FLASH_MS + cfg::SIGNAL_OFF_GAP_MS
+                                         ? cfg::SIGNAL_ON_FLASH_MS
+                                         : 2 * cfg::SIGNAL_OFF_FLASH_MS + cfg::SIGNAL_OFF_GAP_MS;
+            if (!blinkOn_ || t_ - blinkStart_ > blinkMs + cfg::SIGNAL_STEP_MS)
+                return fail("OFF but the displayed frame is not dark (no confirmation due)");
+            if (!isConfirmationFrame(shown_)) return fail("OFF: the frame is not the night-mode confirmation");
+        }
 
         // --- Auto-off is never late: ON with automation active is never
         // idle past the limit (and never early: see the transition above).
@@ -755,6 +804,12 @@ private:
     bool     stuckNoted_ = false;
     bool     holdActive_ = false;
     uint32_t ticksThisHold_ = 0;
+    // v1.5.0 night-mode confirmation: may light the dark ring from
+    // blinkStart_ for one flash sequence (plus one frame step to go dark);
+    // a hold during the slide-out leaves it pending until OFF.
+    bool     blinkOn_ = false;
+    bool     blinkPending_ = false;
+    uint64_t blinkStart_ = 0;
 
     // Duration trackers.
     Span       glitch_, glitchIdle_, trans_, warnRamp_;
@@ -970,6 +1025,7 @@ void addTotals(const Stats& s) {
     g_totals.holdTicks += s.holdTicks;
     g_totals.stuckButtons += s.stuckButtons;
     g_totals.stuckPirs += s.stuckPirs;
+    g_totals.nightToggles += s.nightToggles;
 }
 
 // One random run of `durationMs` starting at millis() == startMs. With
@@ -1049,6 +1105,7 @@ void longRuns(const Profile& p, uint64_t firstSeed, int seeds, double days) {
 void test_random_soak_busy(void) {
     longRuns(kBusy, 1, 3, soakDays(2.0));
     TEST_ASSERT_TRUE_MESSAGE(g_totals.stuckPirs > 0, "no stuck PIR phase exercised");
+    TEST_ASSERT_TRUE_MESSAGE(g_totals.nightToggles > 0, "no night-mode hold with the mirror off exercised");
     TEST_ASSERT_TRUE_MESSAGE(g_totals.stuckButtons > 0, "no stuck button exercised");
 }
 
@@ -1083,10 +1140,18 @@ void test_button_stuck_for_weeks(void) {
     Rig r("button stuck for 51 days", 0u - 30000u, 11);
     Mirror& m = r.mirror();
     RIG_OK(r.loop(5));  // released at boot: the next sample is a real press
+    // Switched on with a click, then the button sticks: dimming until
+    // HOLD_STUCK_MS, then frozen (v1.5.0: a hold from OFF only toggles night
+    // mode, so the light comes on by a click first).
+    r.pressed = true;
+    RIG_OK(r.run(100, 5));
+    r.pressed = false;
+    RIG_OK(r.run(cfg::CLICK_GAP_MS + 4000, 5));
+    TEST_ASSERT_TRUE_MESSAGE(m.power() == PowerState::On, "the click did not switch the mirror on");
     const uint64_t pressAt = r.t() + 5;
     r.pressed = true;
     RIG_OK(r.run(cfg::HOLD_STUCK_MS + 1000, 5));
-    TEST_ASSERT_TRUE_MESSAGE(m.power() == PowerState::On, "the hold did not switch the mirror on");
+    TEST_ASSERT_TRUE_MESSAGE(m.power() == PowerState::On, "the stuck hold switched the mirror off");
     TEST_ASSERT_TRUE(r.stats.holdTicks > 1000);
     const uint64_t lastTick = r.stats.lastHoldTickT;
     TEST_ASSERT_TRUE(lastTick <= pressAt + cfg::HOLD_STUCK_MS);

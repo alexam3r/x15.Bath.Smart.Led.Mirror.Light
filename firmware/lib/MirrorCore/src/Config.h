@@ -90,6 +90,17 @@ constexpr uint32_t SLIDE_STEP_MS    = 33;
 constexpr uint16_t SLIDE_EDGE       = 16;  // 15 lit edge pixels, even to the eye (v1.3.2; v1.0.1: 11)
 constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 102
 
+// --- Night-mode confirmation (v1.5.0) ---------------------------------------
+// A button hold with the mirror off toggles night mode, and the dark ring
+// confirms it in the warm default colour: one soft flash when night mode goes
+// on, two quicker ones when it comes off. Each flash is a cosine bump up to
+// SIGNAL_LEVEL (perceived brightness).
+constexpr uint8_t  SIGNAL_LEVEL        = 77;    // 30 % to the eye
+constexpr uint32_t SIGNAL_ON_FLASH_MS  = 1000;  // night mode on: one flash
+constexpr uint32_t SIGNAL_OFF_FLASH_MS = 400;   // night mode off: two flashes...
+constexpr uint32_t SIGNAL_OFF_GAP_MS   = 200;   // ...this far apart
+constexpr uint32_t SIGNAL_STEP_MS      = 20;
+
 // --- Glitch overlay ("neon failure", v1.1.0) -----------------------------
 // A random core of GLITCH_LEN_MIN..MAX adjacent pixels flickers in the base
 // colour for GLITCH_DURATION_MIN..MAX ms, once every GLITCH_INTERVAL_MIN..MAX
@@ -209,6 +220,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.4.2";
+constexpr char FW_VERSION[] = "1.5.0";
 
 }  // namespace cfg

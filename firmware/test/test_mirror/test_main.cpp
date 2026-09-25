@@ -7,6 +7,7 @@
 
 #include <vector>
 
+#include "ColorMath.h"
 #include "Config.h"
 #include "Frame.h"
 #include "Mirror.h"
@@ -391,33 +392,255 @@ static void test_effect_finishes_returns_to_static(void) {
 
 // --- Hold: table 4.3 -----------------------------------------------------
 
-// §11.1 item 6: hold from OFF slides in; dimming only starts once ON.
-static void test_hold_from_off_slides_then_dims(void) {
+// --- Night mode from the button (v1.5.0) ------------------------------------
+// A hold with the mirror off (or sliding out) toggles night mode and never
+// powers on or dims; the dark ring confirms it in the warm default colour —
+// one soft flash for "on", two quicker ones for "off". Up to v1.4 such a hold
+// slid the light in and dimmed (§11.1 item 6).
+
+static const Rgbw kDark{0, 0, 0, 0};
+
+// Ticks for `ms` (5 ms loop, a HoldTick every 30 ms while `held`) with the
+// mirror off and counts the flashes: every frame is dark or the default warm
+// colour scaled down over the whole ring, never above the SIGNAL_LEVEL peak,
+// and the ring is dark at the end. *peakR gets the brightest red seen.
+static int countFlashes(Mirror& m, uint32_t& now, uint32_t ms, bool held, uint8_t* peakR = nullptr) {
+    const Rgbw peak = scale(kSolidDefault, cie8(cfg::SIGNAL_LEVEL));
+    int flashes = 0;
+    bool lit = false;
+    uint8_t maxR = 0;
+    const uint32_t end = now + ms;
+    uint32_t lastHoldTick = now;
+    while (now < end) {
+        now += 5;
+        if (held && now - lastHoldTick >= 30) {
+            lastHoldTick = now;
+            m.onButton(holdTick(), now);
+        }
+        m.tick(now);
+        TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "the confirmation switched the mirror on");
+        const Rgbw p = m.frame()[0];
+        TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), p), "the flash is not the whole ring");
+        TEST_ASSERT_TRUE_MESSAGE(p.r <= peak.r && p.g <= peak.g && p.b <= peak.b && p.w == 0,
+                                 "brighter than the flash peak");
+        const bool on = !(p == kDark);
+        if (on && !lit) ++flashes;
+        lit = on;
+        if (p.r > maxR) maxR = p.r;
+    }
+    TEST_ASSERT_FALSE_MESSAGE(lit, "the ring is not dark after the confirmation");
+    if (peakR != nullptr) *peakR = maxR;
+    return flashes;
+}
+
+static void test_hold_from_off_turns_night_mode_on_with_one_flash(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+
+    now += 100;
+    m.onButton(holdStart(), now);
+    TEST_ASSERT_TRUE_MESSAGE(m.snapshot().nightMode, "a hold with the mirror off did not turn night mode on");
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+
+    uint8_t peakR = 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, countFlashes(m, now, 2000, true, &peakR), "not one flash for night mode on");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(scale(kSolidDefault, cie8(cfg::SIGNAL_LEVEL)).r, peakR,
+                                    "the flash does not reach 30 % to the eye");
+    m.onButton(holdEnd(), now);
+
+    // Night mode: the PIR does not light the mirror.
+    now += 20000;
+    m.tick(now);
+    m.onPir(true, now);
+    m.tick(now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "the PIR lit the mirror in night mode");
+}
+
+static void test_hold_in_night_mode_turns_it_off_with_two_flashes(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(nightModeCmd(true), now);
+
+    now += 100;
+    m.onButton(holdStart(), now);
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, countFlashes(m, now, 2000, true), "not two flashes for night mode off");
+    m.onButton(holdEnd(), now);
+}
+
+// A hold during the slide-out counts as "off": night mode goes on at once,
+// the slide-out carries on, and the flash waits for the ring to go dark.
+static void test_hold_during_slide_off_flashes_once_dark(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs + 50);
+    m.onButton(click(1), now);
+    run(m, now, 200);
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+
+    m.onButton(holdStart(), now);
+    TEST_ASSERT_TRUE(m.snapshot().nightMode);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOff == m.power(), "a hold during the slide-out switched the light on");
+    const uint32_t deadline = now + kSlideMs;
+    while (m.power() != PowerState::Off && now < deadline) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, countFlashes(m, now, 2000, false), "no flash once the ring went dark");
+    m.onButton(holdEnd(), now);
+}
+
+// A click during the flash switches the light on as usual: night mode is
+// cleared, the flash stops and never comes back.
+static void test_click_during_the_flash_powers_on_cleanly(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    now += 100;
+    m.onButton(holdStart(), now);
+    run(m, now, 300);
+    m.onButton(holdEnd(), now);
+    TEST_ASSERT_FALSE_MESSAGE(allPixelsEqual(m.frame(), kDark), "no flash 300 ms after the hold");
+
+    m.onButton(click(1), now);
+    TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+    TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    run(m, now, kSlideMs + 50);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "the flash disturbed the light");
+
+    m.onButton(click(1), now);
+    const uint32_t deadline = now + kSlideMs;
+    while (m.power() != PowerState::Off && now < deadline) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, countFlashes(m, now, 1500, false), "an old flash came back");
+}
+
+// Any power-on ends a confirmation for good: switched on and straight off
+// again (radius 0, dark again within a step) the old flash must not play on,
+// nor must one left pending by a hold during the slide-out.
+static void test_power_on_cancels_the_confirmation_for_good(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    now += 100;
+    m.onButton(holdStart(), now);
+    m.onButton(holdEnd(), now);
+    run(m, now, 50);
+    m.onButton(click(1), now);  // on...
+    m.onButton(click(1), now);  // ...and off before the first slide step
+    uint32_t deadline = now + 500;
+    while (m.power() != PowerState::Off && now < deadline) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, countFlashes(m, now, 1500, false), "the flash played on after a power-on");
+
+    // Pending: a hold during the slide-out, then the light goes back on.
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs + 50);
+    m.onButton(click(1), now);
+    run(m, now, 200);
+    m.onButton(holdStart(), now);  // pending until OFF
+    m.onButton(holdEnd(), now);
+    m.onButton(click(1), now);     // back on: the pending flash is dropped
+    run(m, now, kSlideMs + 50);
+    m.onButton(click(1), now);
+    deadline = now + kSlideMs;
+    while (m.power() != PowerState::Off && now < deadline) {
+        now += 5;
+        m.tick(now);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, countFlashes(m, now, 1500, false), "a pending flash survived a power-on");
+}
+
+// The flash is a fixed signal: colour and brightness sent from HA while the
+// mirror is off do not tint or dim it.
+static void test_the_flash_ignores_colour_and_brightness_set_while_off(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(lightColor(0, 0, 255), now);
+    m.apply(lightBrightness(20), now);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    run(m, now, cfg::TRANSITION_MS + 50);
+
+    m.onButton(holdStart(), now);
+    uint8_t peakR = 0;
+    TEST_ASSERT_EQUAL_INT(1, countFlashes(m, now, 2000, true, &peakR));
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(scale(kSolidDefault, cie8(cfg::SIGNAL_LEVEL)).r, peakR,
+                                    "the flash took the colour or brightness set while off");
+    m.onButton(holdEnd(), now);
+}
+
+// Neither switches the light on nor dims, however long it is held.
+static void test_hold_from_off_never_powers_on_or_dims(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.onButton(holdStart(), now);
+    countFlashes(m, now, 3000, true);
+    m.onButton(holdEnd(), now);
+
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs + 50);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "the hold changed the brightness");
+}
+
+// Switching the light on with the button also switches automation back on,
+// so a mirror switched on by hand can never burn forever. Switching it off
+// leaves automation alone, and so does switching on from HA/Alice.
+static void test_button_power_on_turns_automation_back_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
 
-    m.onButton(holdStart(), now);
+    m.apply(automationCmd(false), now);
+    m.onButton(click(1), now);
+    TEST_ASSERT_TRUE_MESSAGE(m.snapshot().automation, "a click that switched the light on left automation off");
+    run(m, now, kSlideMs + 50);
+
+    m.apply(automationCmd(false), now);
+    m.onButton(click(1), now);  // off: automation stays as it is
+    TEST_ASSERT_FALSE_MESSAGE(m.snapshot().automation, "switching the light off turned automation on");
+    run(m, now, 200);
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+    m.onButton(click(1), now);  // back on during the slide-out
+    TEST_ASSERT_TRUE(m.snapshot().automation);
+    run(m, now, kSlideMs + 50);
+
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs + 50);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    m.apply(automationCmd(false), now);
+    m.onButton(click(2), now);  // makeup from off
+    TEST_ASSERT_TRUE_MESSAGE(m.snapshot().automation, "a double click from off left automation off");
+}
+
+static void test_ha_power_on_leaves_automation_alone(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(automationCmd(false), now);
+    m.apply(lightState(1), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
-
-    // HoldTicks while still sliding must be ignored (no dimming).
-    for (int i = 0; i < 10; ++i) {
-        now += 30;
-        m.onButton(holdTick(), now);
-        m.tick(now);
-    }
+    TEST_ASSERT_FALSE(m.snapshot().automation);
+    run(m, now, kSlideMs + 50);
+    m.apply(lightState(0), now);
+    run(m, now, kSlideMs + 50);
+    m.apply(makeupCmd(true), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
-
-    run(m, now, kSlideMs);
-    TEST_ASSERT_TRUE(PowerState::On == m.power());
-
-    // First tick after reaching On hits the DIM_MAX cap and flips direction;
-    // the second applies the first real decrement.
-    m.onButton(holdTick(), now);
-    m.tick(now);
-    m.onButton(holdTick(), now);
-    m.tick(now);
-    TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS - cfg::DIM_STEP, m.frame()[0].r);
+    TEST_ASSERT_FALSE(m.snapshot().automation);
 }
 
 // Bug A regression + Ruling R14: a hold started while in night mode must
@@ -1163,7 +1386,7 @@ static void test_enabling_automation_does_not_auto_off_immediately(void) {
     uint32_t now = 0;
     m.begin(now);
     m.apply(automationCmd(false), now);
-    m.onButton(click(1), now);
+    m.apply(lightState(1), now);  // from HA: a click would switch automation back on (v1.5.0)
     run(m, now, kSlideMs);
 
     run(m, now, cfg::AUTO_OFF_MS * 2);  // go very stale while automation is off
@@ -2028,7 +2251,15 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_effect_during_slide_on_is_deferred);
     RUN_TEST(test_click3_replaces_running_effect);
     RUN_TEST(test_effect_finishes_returns_to_static);
-    RUN_TEST(test_hold_from_off_slides_then_dims);
+    RUN_TEST(test_hold_from_off_turns_night_mode_on_with_one_flash);
+    RUN_TEST(test_hold_in_night_mode_turns_it_off_with_two_flashes);
+    RUN_TEST(test_hold_during_slide_off_flashes_once_dark);
+    RUN_TEST(test_click_during_the_flash_powers_on_cleanly);
+    RUN_TEST(test_power_on_cancels_the_confirmation_for_good);
+    RUN_TEST(test_the_flash_ignores_colour_and_brightness_set_while_off);
+    RUN_TEST(test_hold_from_off_never_powers_on_or_dims);
+    RUN_TEST(test_button_power_on_turns_automation_back_on);
+    RUN_TEST(test_ha_power_on_leaves_automation_alone);
     RUN_TEST(test_hold_in_night_mode_only_clears_night_mode);
     RUN_TEST(test_night_mode_hold_never_dims);
     RUN_TEST(test_redundant_night_mode_off_keeps_hold_cooldown);

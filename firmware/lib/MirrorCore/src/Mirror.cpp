@@ -89,12 +89,61 @@ void Mirror::powerOn(uint32_t now) {
     } else {
         return;  // SlideOn/On: no-op (table 4.1)
     }
+    blink_.cancel();  // switching on ends a night-mode confirmation
+    pendingBlink_ = 0;
     retarget(now, false);  // a base/colour set together with power-on shows at once, no fade
     power_ = PowerState::SlideOn;
     lastStepMs_ = now;
     gate_.onPowerOn();
     markActivity(now);
     MLOG("[%lu] POWER ON -> SLIDE_ON\n", (unsigned long)now);
+}
+
+// v1.5.0: switching the light on with the button also switches automation
+// back on, so a mirror switched on by hand can never burn forever. HA, Alice
+// and the PIR leave the flag alone.
+void Mirror::buttonPowerOn(uint32_t now) {
+    if (!gate_.automation()) MLOG("[%lu] AUTOMATION ON (button power-on)\n", (unsigned long)now);
+    gate_.setAutomation(true);
+    powerOn(now);
+}
+
+// v1.5.0: a hold with the mirror off or sliding out toggles night mode; the
+// dark ring confirms it (one flash for on, two for off).
+void Mirror::toggleNightModeFromButton(uint32_t now) {
+    const bool on = !gate_.nightMode();
+    gate_.setNightMode(on);
+    if (!on) gate_.onManualOff(now);  // Ruling R14: 15 s PIR quiet for whoever holds the button
+    MLOG("[%lu] NIGHT MODE %s (button)\n", (unsigned long)now, on ? "ON" : "OFF");
+    if (power_ == PowerState::Off) {
+        startConfirmation(on, now);
+    } else {
+        pendingBlink_ = on ? 1 : 2;  // SlideOff: once the ring is dark
+    }
+}
+
+void Mirror::startConfirmation(bool nightModeOn, uint32_t now) {
+    if (nightModeOn) {
+        blink_.start(1, cfg::SIGNAL_ON_FLASH_MS, 0, cfg::SIGNAL_LEVEL, now);
+    } else {
+        blink_.start(2, cfg::SIGNAL_OFF_FLASH_MS, cfg::SIGNAL_OFF_GAP_MS, cfg::SIGNAL_LEVEL, now);
+    }
+    lastBlinkStepMs_ = now;
+}
+
+// Renders the confirmation while OFF: the default warm colour over the whole
+// ring at the blink's perceived level, then one dark frame when it is over.
+// A fixed signal: colour and brightness sent from HA while off (they apply
+// only at the next power-on) do not change it.
+void Mirror::tickConfirmation(uint32_t now) {
+    if (power_ != PowerState::Off || !blink_.armed()) return;
+    if ((uint32_t)(now - lastBlinkStepMs_) < cfg::SIGNAL_STEP_MS) return;
+    lastBlinkStepMs_ = now;
+    const bool running = blink_.active(now);
+    const Rgbw warm{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+    frame_.fill(scale(warm, cie8(blink_.level(now))));
+    frameDirty_ = true;
+    if (!running) blink_.cancel();
 }
 
 void Mirror::powerOff(bool manual, uint32_t now) {
@@ -250,14 +299,14 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
         case ButtonEventType::Click:
             if (ev.clicks == 1) {
                 if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
-                    powerOn(now);
+                    buttonPowerOn(now);
                 } else {
                     powerOff(true, now);
                 }
             } else if (ev.clicks == 2) {
                 if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
                     base_ = BaseMode::Makeup;
-                    powerOn(now);
+                    buttonPowerOn(now);
                 } else {
                     base_ = (base_ == BaseMode::Solid) ? BaseMode::Makeup : BaseMode::Solid;
                     retarget(now, true);
@@ -269,12 +318,12 @@ void Mirror::onButton(const ButtonEvent& ev, uint32_t now) {
             break;
         case ButtonEventType::HoldStart:
             holding_ = true;
-            if (gate_.nightMode()) {
-                gate_.setNightMode(false);
-                gate_.onManualOff(now);  // Ruling R14: 15 s PIR quiet — PIR must not relight it either
-                holdLocked_ = true;      // bug A fix: this hold must not power on or dim
-            } else if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
-                powerOn(now);
+            if (power_ == PowerState::Off || power_ == PowerState::SlideOff) {
+                // v1.5.0: toggles night mode instead of sliding the light in
+                // (§11.1 item 6 up to v1.4). Bug A lock: this hold never
+                // powers on or dims, even if HA switches the light on mid-hold.
+                toggleNightModeFromButton(now);
+                holdLocked_ = true;
             }
             break;
         case ButtonEventType::HoldTick:
@@ -397,6 +446,10 @@ void Mirror::tick(uint32_t now) {
                 power_ = PowerState::Off;
                 applyDefaults();
                 gate_.onOffReached(now);
+                if (pendingBlink_ != 0) {  // a night-mode hold during the slide-out
+                    startConfirmation(pendingBlink_ == 1, now);
+                    pendingBlink_ = 0;
+                }
                 MLOG("[%lu] SLIDE_OFF -> OFF (defaults applied)\n", (unsigned long)now);
             }
         }
@@ -417,6 +470,7 @@ void Mirror::tick(uint32_t now) {
     }
 
     tickGlitch(now);
+    tickConfirmation(now);
 
     if (power_ == PowerState::On && effect_ == EffectId::None && staticDirty_) {
         frame_.fill(baseColor());
