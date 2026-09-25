@@ -109,11 +109,16 @@ void Mirror::buttonPowerOn(uint32_t now) {
 }
 
 // v1.5.0: a hold with the mirror off or sliding out toggles night mode; the
-// dark ring confirms it (one flash for on, two for off).
+// dark ring confirms it (one flash for on, two for off). v1.5.1: automation
+// follows (off with night mode, back on without it), so the HA switch shows
+// whether the PIR works.
 void Mirror::toggleNightModeFromButton(uint32_t now) {
     const bool on = !gate_.nightMode();
     gate_.setNightMode(on);
-    if (!on) gate_.onManualOff(now);  // Ruling R14: 15 s PIR quiet for whoever holds the button
+    gate_.setAutomation(!on);
+    // Ruling R14: 15 s PIR quiet for whoever holds the button. Started after
+    // setAutomation(true), whose off -> on transition cancels a cooldown.
+    if (!on) gate_.onManualOff(now);
     MLOG("[%lu] NIGHT MODE %s (button)\n", (unsigned long)now, on ? "ON" : "OFF");
     if (power_ == PowerState::Off) {
         startConfirmation(on, now);

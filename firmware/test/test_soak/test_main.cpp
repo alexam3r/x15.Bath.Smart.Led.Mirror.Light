@@ -471,6 +471,11 @@ private:
                          powerName(p0), powerName(p1), night0, s1.nightMode);
                     return true;
                 }
+                if (s1.automation == s1.nightMode) {  // v1.5.1: automation follows, for HA
+                    fail("hold from %s: night mode %d but automation %d", powerName(p0), s1.nightMode,
+                         s1.automation);
+                    return true;
+                }
                 ++stats.nightToggles;
                 if (p0 == PowerState::Off) {
                     blinkOn_ = true;

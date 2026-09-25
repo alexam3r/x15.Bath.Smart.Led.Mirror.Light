@@ -442,6 +442,8 @@ static void test_hold_from_off_turns_night_mode_on_with_one_flash(void) {
     now += 100;
     m.onButton(holdStart(), now);
     TEST_ASSERT_TRUE_MESSAGE(m.snapshot().nightMode, "a hold with the mirror off did not turn night mode on");
+    // v1.5.1: automation goes off with it, so HA shows the PIR is off.
+    TEST_ASSERT_FALSE_MESSAGE(m.snapshot().automation, "night mode from the button left automation on");
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
 
     uint8_t peakR = 0;
@@ -462,13 +464,27 @@ static void test_hold_in_night_mode_turns_it_off_with_two_flashes(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
+    m.apply(automationCmd(false), now);
     m.apply(nightModeCmd(true), now);
 
     now += 100;
+    const uint32_t holdAt = now;
     m.onButton(holdStart(), now);
     TEST_ASSERT_FALSE(m.snapshot().nightMode);
+    // v1.5.1: automation comes back on with it...
+    TEST_ASSERT_TRUE_MESSAGE(m.snapshot().automation, "leaving night mode by the button left automation off");
+    // ...and still the PIR keeps quiet for 15 s (R14) for whoever holds the button.
+    m.onPir(true, now);
+    m.tick(now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "turning automation on cancelled the 15 s PIR quiet");
+    m.onPir(false, now);
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, countFlashes(m, now, 2000, true), "not two flashes for night mode off");
     m.onButton(holdEnd(), now);
+
+    now = holdAt + cfg::PIR_COOLDOWN_MS + 50;
+    m.tick(now);
+    m.onPir(true, now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOn == m.power(), "the PIR does not work after leaving night mode");
 }
 
 // A hold during the slide-out counts as "off": night mode goes on at once,
