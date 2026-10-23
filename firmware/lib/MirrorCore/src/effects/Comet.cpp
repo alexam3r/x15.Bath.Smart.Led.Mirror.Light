@@ -6,7 +6,7 @@
 
 namespace {
 constexpr uint16_t kTotalSteps = cfg::TOTAL_LEDS + cfg::COMET_TAIL;
-constexpr Rgbw kWhite{255, 255, 255, 255};
+constexpr Rgbw kYellow{255, 255, 0, 0};
 }  // namespace
 
 void Comet::begin(const EffectContext& ctx) {
@@ -37,7 +37,7 @@ bool Comet::step(Frame& out, const EffectContext& ctx) {
         // evenly to the eye; the quadratic PWM curve before was a hand-made
         // approximation of the same thing.
         const uint8_t t = static_cast<uint8_t>(255UL * back / cfg::COMET_TAIL);
-        out[i] = lerpPerceptual(ctx.base, kWhite, scale8(t, alpha));
+        out[i] = lerpPerceptual(ctx.base, kYellow, scale8(t, alpha));
     }
     ++step_;
     return step_ <= kTotalSteps;

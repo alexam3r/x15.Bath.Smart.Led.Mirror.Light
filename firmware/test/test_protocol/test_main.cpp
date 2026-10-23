@@ -254,8 +254,8 @@ static void test_light_effect_names(void) {
 
     LightCommand flame;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"flame\"}", flame));
-    TEST_ASSERT_TRUE(EffectRequest::Temporary == flame.effect);
-    TEST_ASSERT_TRUE(EffectId::Flame == flame.effectId);
+    TEST_ASSERT_TRUE(EffectRequest::None == flame.effect);
+    TEST_ASSERT_TRUE(EffectId::None == flame.effectId);
 
     // breathe was replaced by flame in v1.4.0: its name is unknown now and ignored.
     LightCommand breathe;
@@ -264,8 +264,8 @@ static void test_light_effect_names(void) {
 
     LightCommand embers;
     TEST_ASSERT_TRUE(lightOf("{\"effect\": \"embers\"}", embers));
-    TEST_ASSERT_TRUE(EffectRequest::Temporary == embers.effect);
-    TEST_ASSERT_TRUE(EffectId::Embers == embers.effectId);
+    TEST_ASSERT_TRUE(EffectRequest::None == embers.effect);
+    TEST_ASSERT_TRUE(EffectId::None == embers.effectId);
 
     // candle was removed in v1.3.0: its name is unknown now and ignored.
     LightCommand candle;
@@ -367,7 +367,7 @@ static void test_to_command_unknown_route_rejected(void) {
 // --- buildStateJson (section 5.3) -------------------------------------------
 
 // §5.3 exact key order and values, for the default StateSnapshot (on=false,
-// brightness=255, r=255/g=140/b=50, base=Solid, effect=None, automation=true,
+// brightness=255, r=255/g=140/b=50, base=Makeup, effect=None, automation=true,
 // nightMode=false).
 static void test_state_json_matches_5_3(void) {
     StateSnapshot s;  // default
@@ -377,9 +377,9 @@ static void test_state_json_matches_5_3(void) {
     TEST_ASSERT_EQUAL_INT((int)std::strlen(buf), (int)n);
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"OFF\",\"brightness\":255,\"color_mode\":\"rgb\","
-        "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"solid\","
-        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.5.1\","
-        "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"OFF\"}",
+        "\"color\":{\"r\":255,\"g\":140,\"b\":50},\"effect\":\"makeup\","
+        "\"automation\":\"ON\",\"night_mode\":\"OFF\",\"glitch\":\"ON\",\"fw\":\"1.6.0\","
+        "\"brightness_pct\":100,\"moveDetection\":\"ON\",\"makeup\":\"ON\"}",
         buf);
 }
 
@@ -403,7 +403,7 @@ static void test_state_json_running_effect_and_makeup(void) {
     TEST_ASSERT_EQUAL_STRING(
         "{\"state\":\"ON\",\"brightness\":128,\"color_mode\":\"rgb\","
         "\"color\":{\"r\":10,\"g\":20,\"b\":30},\"effect\":\"rainbow\","
-        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.5.1\","
+        "\"automation\":\"OFF\",\"night_mode\":\"ON\",\"glitch\":\"OFF\",\"fw\":\"1.6.0\","
         "\"brightness_pct\":50,\"moveDetection\":\"OFF\",\"makeup\":\"ON\"}",
         buf);
 }
@@ -452,7 +452,7 @@ static void test_state_json_differs_ignores_pir_only(void) {
     c = a; c.r = 1;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.g = 2;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.b = 3;                         TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
-    c = a; c.base = BaseMode::Makeup;       TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
+    c = a; c.base = BaseMode::Solid;        TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.effect = EffectId::Wave;       TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.automation = !a.automation;    TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
     c = a; c.nightMode = !a.nightMode;      TEST_ASSERT_TRUE(stateJsonDiffers(a, c));
@@ -496,14 +496,14 @@ static void test_diag_json(void) {
     d.freeHeap = 231000;
     d.minFreeHeap = 198000;
     d.maxAllocHeap = 110592;
-    d.lastEffect = EffectId::Embers;
+    d.lastEffect = EffectId::Comet;
     char buf[cfg::DIAG_JSON_CAP];
     const size_t n = buildDiagJson(d, buf, sizeof(buf));
     TEST_ASSERT_TRUE(n > 0);
     TEST_ASSERT_EQUAL_STRING(
         "{\"uptime_s\":3723,\"rssi\":-61,\"reset_reason\":\"POWERON\","
         "\"free_heap\":231000,\"min_free_heap\":198000,\"max_alloc_heap\":110592,"
-        "\"last_effect\":\"embers\",\"fw\":\"1.5.1\"}",
+        "\"last_effect\":\"comet\",\"fw\":\"1.6.0\"}",
         buf);
     TEST_ASSERT_EQUAL_UINT32(n, strlen(buf));
     // Nothing started since boot.

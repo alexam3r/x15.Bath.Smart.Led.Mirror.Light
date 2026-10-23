@@ -21,6 +21,14 @@ void tearDown(void) {}
 // randomEffect() -> Dark, rollAutoEffectDelay() -> AUTO_EFFECT_MIN_MS).
 static uint32_t zeroRandom(uint32_t /*bound*/) { return 0; }
 
+// Most legacy scenarios explicitly exercise Solid rather than the boot profile.
+static void beginSolid(Mirror& m, uint32_t now) {
+    m.begin(now);
+    Command cmd;
+    cmd.light.effect = EffectRequest::Solid;
+    m.apply(cmd, now);
+}
+
 // Advances the fake clock `now` by `ms`, calling tick() every 5 ms — the
 // test harness convention.
 static void run(Mirror& m, uint32_t& now, uint32_t ms) {
@@ -62,26 +70,31 @@ static void test_begins_off(void) {
     uint32_t now = 0;
     m.begin(now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_TRUE(BaseMode::Makeup == m.snapshot().base);
+    TEST_ASSERT_EQUAL_UINT8(255, m.snapshot().brightness);
+    m.onButton(click(1), now);
+    run(m, now, kSlideMs);
+    for (uint16_t i = 0; i < Frame::kSize; ++i)
+        TEST_ASSERT_TRUE((m.frame()[i] == Rgbw{0, 0, 0, 255}));
 }
 
 // Table 4.1: powerOn() / OFF -> SLIDE_ON, radius 0.
 static void test_click1_from_off_starts_slide_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(1), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
 }
 
 // Table 4.1: "slide finished" / SLIDE_ON -> ON (no pending effect).
-// v1.0.1: 33 ms per step (v27: 28 ms); v1.3.2: SLIDE_MAX_RADIUS = 102 steps
-// with the longer edge, ~3.4 s nominal. With the 5 ms fake-clock tick a step
-// lands every 35 ms.
+// 22 ms per step, 102 steps: ~2.24 s nominal. With the 5 ms fake-clock
+// tick a step lands every 25 ms.
 static void test_slide_on_duration_matches_its_steps(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
 
@@ -92,15 +105,15 @@ static void test_slide_on_duration_matches_its_steps(void) {
         TEST_ASSERT_TRUE_MESSAGE(now - start < 10000, "slide-on never finished");
     }
     const uint32_t took = now - start;
-    const uint32_t expected = cfg::SLIDE_MAX_RADIUS * 35;  // 102 steps -> 3570 ms
+    const uint32_t expected = 102 * 25;  // 22 ms rounded to the next 5 ms tick
     TEST_ASSERT_TRUE_MESSAGE(took + 50 >= expected && took <= expected + 50,
-                              "slide-on duration is not SLIDE_MAX_RADIUS steps of 33 ms (35 ms with 5 ms ticks)");
+                              "slide-on duration is not 102 steps of 22 ms (25 ms with 5 ms ticks)");
 }
 
 static void test_slide_on_completes_to_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
 
     run(m, now, kSlideMs);
@@ -112,7 +125,7 @@ static void test_slide_on_completes_to_on(void) {
 static void test_click1_from_on_slides_off_to_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     TEST_ASSERT_TRUE(PowerState::On == m.power());
@@ -131,7 +144,7 @@ static void test_click1_from_on_slides_off_to_off(void) {
 static void test_power_on_during_slide_off_reverses(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);  // -> On, ring fully lit
 
@@ -164,7 +177,7 @@ static void test_power_on_during_slide_off_reverses(void) {
 static void test_power_off_before_first_slide_step_stays_dark(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(1), now);  // -> SlideOn, radius 0
     m.onButton(click(1), now);  // -> SlideOff before any slide step
@@ -270,7 +283,7 @@ static Command lightEffect(EffectRequest req, EffectId id = EffectId::None) {
 static void test_click2_from_off_makeup_and_powers_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(2), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
@@ -282,7 +295,7 @@ static void test_click2_from_off_makeup_and_powers_on(void) {
 static void test_click2_toggles_base_when_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
@@ -301,7 +314,7 @@ static void test_click2_toggles_base_when_on(void) {
 static void test_click3_from_off_ignored(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(3), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
@@ -321,7 +334,7 @@ static void test_click3_from_off_ignored(void) {
 static void test_click3_during_slide_off_ignored(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.onButton(click(1), now);  // -> SlideOff
@@ -335,7 +348,7 @@ static void test_click3_during_slide_off_ignored(void) {
     run(m, now, kSlideMs);
     TEST_ASSERT_TRUE(PowerState::On == m.power());
     run(m, now, 90);  // long enough for 2 effect steps, if one had leaked in
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault),
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor),
                               "a pending effect leaked through a SlideOff click(3)");
 }
 
@@ -344,7 +357,7 @@ static void test_click3_during_slide_off_ignored(void) {
 static void test_effect_during_slide_on_is_deferred(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(1), now);           // -> SlideOn
     m.onButton(click(3), now);           // pending_ = Dark (deferred, not started)
@@ -362,7 +375,7 @@ static void test_effect_during_slide_on_is_deferred(void) {
 static void test_click3_replaces_running_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -380,7 +393,7 @@ static void test_click3_replaces_running_effect(void) {
 static void test_effect_finishes_returns_to_static(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -436,7 +449,7 @@ static int countFlashes(Mirror& m, uint32_t& now, uint32_t ms, bool held, uint8_
 static void test_hold_from_off_turns_night_mode_on_with_one_flash(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     TEST_ASSERT_FALSE(m.snapshot().nightMode);
 
     now += 100;
@@ -463,7 +476,7 @@ static void test_hold_from_off_turns_night_mode_on_with_one_flash(void) {
 static void test_hold_in_night_mode_turns_it_off_with_two_flashes(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(automationCmd(false), now);
     m.apply(nightModeCmd(true), now);
 
@@ -492,7 +505,7 @@ static void test_hold_in_night_mode_turns_it_off_with_two_flashes(void) {
 static void test_hold_during_slide_off_flashes_once_dark(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs + 50);
     m.onButton(click(1), now);
@@ -517,7 +530,7 @@ static void test_hold_during_slide_off_flashes_once_dark(void) {
 static void test_click_during_the_flash_powers_on_cleanly(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     now += 100;
     m.onButton(holdStart(), now);
     run(m, now, 300);
@@ -546,7 +559,7 @@ static void test_click_during_the_flash_powers_on_cleanly(void) {
 static void test_power_on_cancels_the_confirmation_for_good(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     now += 100;
     m.onButton(holdStart(), now);
     m.onButton(holdEnd(), now);
@@ -584,7 +597,7 @@ static void test_power_on_cancels_the_confirmation_for_good(void) {
 static void test_the_flash_ignores_colour_and_brightness_set_while_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(lightColor(0, 0, 255), now);
     m.apply(lightBrightness(20), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
@@ -602,7 +615,7 @@ static void test_the_flash_ignores_colour_and_brightness_set_while_off(void) {
 static void test_hold_from_off_never_powers_on_or_dims(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(holdStart(), now);
     countFlashes(m, now, 3000, true);
     m.onButton(holdEnd(), now);
@@ -619,7 +632,7 @@ static void test_hold_from_off_never_powers_on_or_dims(void) {
 static void test_button_power_on_turns_automation_back_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.apply(automationCmd(false), now);
     m.onButton(click(1), now);
@@ -646,7 +659,7 @@ static void test_button_power_on_turns_automation_back_on(void) {
 static void test_ha_power_on_leaves_automation_alone(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(automationCmd(false), now);
     m.apply(lightState(1), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
@@ -669,7 +682,7 @@ static void test_ha_power_on_leaves_automation_alone(void) {
 static void test_hold_in_night_mode_only_clears_night_mode(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(nightModeCmd(true), now);
     TEST_ASSERT_TRUE(m.snapshot().nightMode);
 
@@ -719,7 +732,7 @@ static void test_hold_in_night_mode_only_clears_night_mode(void) {
 static void assertRedundantCommandKeepsHoldCooldown(const Command& redundant) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(nightModeCmd(true), now);
 
     now += 100;
@@ -766,7 +779,7 @@ static void test_redundant_automation_on_keeps_hold_cooldown(void) {
 static void test_night_mode_hold_never_dims(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(nightModeCmd(true), now);
 
     m.onButton(holdStart(), now);
@@ -828,7 +841,7 @@ static void test_night_mode_hold_never_dims(void) {
 static void test_dim_bounces_5_255(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -849,7 +862,7 @@ static void test_dim_bounces_5_255(void) {
 static void test_click_ge4_ignored(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onButton(click(4), now);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
@@ -862,7 +875,7 @@ static void test_click_ge4_ignored(void) {
 static void test_brightness_zero_turns_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -873,7 +886,7 @@ static void test_brightness_zero_turns_off(void) {
 static void test_color_switches_to_solid(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.onButton(click(2), now);
@@ -890,7 +903,7 @@ static void test_color_switches_to_solid(void) {
 static void test_apply_defaults_only_after_slide_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -910,13 +923,15 @@ static void test_apply_defaults_only_after_slide_off(void) {
 
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
-    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
+    TEST_ASSERT_TRUE(BaseMode::Makeup == m.snapshot().base);
+    TEST_ASSERT_EQUAL_UINT8(255, m.snapshot().brightness);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 }
 
 static void test_makeup_command_powers_on_from_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.apply(makeupCmd(true), now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
@@ -932,7 +947,7 @@ static void test_makeup_command_powers_on_from_off(void) {
 static void test_night_mode_command_turns_off_when_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -943,7 +958,7 @@ static void test_night_mode_command_turns_off_when_on(void) {
 static void test_random_effect_command_starts_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -961,7 +976,7 @@ static void test_random_effect_command_starts_effect(void) {
 static void test_light_named_effect_starts_that_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -985,7 +1000,7 @@ static void test_light_named_effect_starts_that_effect(void) {
 static void test_light_random_effect_starts_random_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -999,7 +1014,7 @@ static void test_light_random_effect_starts_random_effect(void) {
 static void test_light_on_with_named_effect_defers_it(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     Command c = lightEffect(EffectRequest::Temporary, EffectId::Rainbow);
     c.light.state = 1;
@@ -1024,7 +1039,7 @@ static void test_light_on_with_named_effect_defers_it(void) {
 static void test_power_on_noop_while_slide_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, 500);  // well into the slide-on (radius > 0)
     uint16_t litBefore = litPixelCount(m.frame());
@@ -1042,7 +1057,7 @@ static void test_power_on_noop_while_slide_on(void) {
 static void test_power_on_noop_while_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -1054,7 +1069,7 @@ static void test_power_on_noop_while_on(void) {
 static void test_power_off_noop_while_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.apply(lightState(0), now);  // powerOff() while Off -> must no-op, no cooldown started
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
@@ -1068,7 +1083,7 @@ static void test_power_off_noop_while_off(void) {
 static void test_power_off_noop_while_slide_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.onButton(click(1), now);  // -> SlideOff, starts the 15s cooldown at this `now`
@@ -1092,7 +1107,7 @@ static void test_power_off_noop_while_slide_off(void) {
 static void test_power_off_during_slide_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);  // -> SlideOn
     run(m, now, 500);           // partway into the slide-on
     uint16_t litBefore = litPixelCount(m.frame());
@@ -1140,7 +1155,7 @@ static void test_power_off_during_slide_on(void) {
 static void test_power_off_during_slide_on_drops_pending_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);  // -> SlideOn
     m.onButton(click(3), now);  // pending_ = Dark
     run(m, now, 500);
@@ -1162,7 +1177,7 @@ static void test_power_off_during_slide_on_drops_pending_effect(void) {
 static void test_power_off_cancels_running_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);      // -> On
     m.onButton(click(3), now);  // start Dark
@@ -1190,7 +1205,7 @@ static void test_power_off_cancels_running_effect(void) {
 static void test_automation_flag_gates_pir(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.apply(automationCmd(false), now);
     m.onPir(true, now);
@@ -1207,7 +1222,7 @@ static void test_automation_flag_gates_pir(void) {
 static void test_pir_turns_on_when_allowed(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.onPir(true, now);
     TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
@@ -1216,7 +1231,7 @@ static void test_pir_turns_on_when_allowed(void) {
 static void test_pir_blocked_during_manual_off_cooldown(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.onButton(click(1), now);  // -> SlideOff, cooldown starts at this `now`
@@ -1235,7 +1250,7 @@ static void test_pir_blocked_during_manual_off_cooldown(void) {
 static void test_pir_blocked_when_automation_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(automationCmd(false), now);
 
     m.onPir(true, now);
@@ -1245,7 +1260,7 @@ static void test_pir_blocked_when_automation_off(void) {
 static void test_pir_blocked_in_night_mode(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(nightModeCmd(true), now);
 
     m.onPir(true, now);
@@ -1260,7 +1275,7 @@ static void test_pir_blocked_in_night_mode(void) {
 static void test_auto_off_after_15min_idle(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);  // -> On, lastActivity_ == 0 (set at click(1) time)
 
@@ -1309,7 +1324,7 @@ static void test_auto_off_after_15min_idle(void) {
 static void test_pir_activity_postpones_auto_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);  // -> On, lastActivity_ == 0
 
@@ -1336,7 +1351,7 @@ static void test_pir_activity_postpones_auto_off(void) {
 static void test_button_event_postpones_auto_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);  // -> On, lastActivity_ == 0
 
@@ -1356,16 +1371,18 @@ static void test_button_event_postpones_auto_off(void) {
     }
 }
 
-static void test_no_auto_off_when_automation_off(void) {
+static void test_auto_off_when_automation_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
     m.apply(automationCmd(false), now);
 
-    run(m, now, cfg::AUTO_OFF_MS + 1000);
+    run(m, now, 900000 - now);
     TEST_ASSERT_TRUE(PowerState::On == m.power());
+    run(m, now, 5);
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
 }
 
 // §4.4: auto-effect only in Solid; nextAutoEffect rerolled to AUTO_EFFECT_MIN_MS
@@ -1373,7 +1390,7 @@ static void test_no_auto_off_when_automation_off(void) {
 static void test_auto_effect_starts_in_solid(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -1382,17 +1399,19 @@ static void test_auto_effect_starts_in_solid(void) {
                                "auto-effect never started after the idle window");
 }
 
-static void test_auto_effect_not_in_makeup(void) {
+static void test_auto_effect_starts_in_makeup(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(2), now);  // Makeup, powers on
     run(m, now, kSlideMs);
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
 
-    run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000);
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor),
-                              "auto-effect incorrectly started while in Makeup");
+    run(m, now, 60000 - now);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    run(m, now, 5);
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Dark == m.snapshot().effect,
+                              "auto-effect did not start after 60 seconds in Makeup");
 }
 
 // Ruling R9: enabling automation must never cause an instant auto-off, even
@@ -1400,12 +1419,12 @@ static void test_auto_effect_not_in_makeup(void) {
 static void test_enabling_automation_does_not_auto_off_immediately(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(automationCmd(false), now);
     m.apply(lightState(1), now);  // from HA: a click would switch automation back on (v1.5.0)
     run(m, now, kSlideMs);
 
-    run(m, now, cfg::AUTO_OFF_MS * 2);  // go very stale while automation is off
+    run(m, now, 10UL * 60 * 1000);  // still within the universal 15-minute limit
     TEST_ASSERT_TRUE(PowerState::On == m.power());
 
     m.apply(automationCmd(true), now);
@@ -1419,7 +1438,7 @@ static void test_enabling_automation_does_not_auto_off_immediately(void) {
 static void test_snapshot_reports_running_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
 
     m.onButton(click(1), now);
@@ -1436,7 +1455,7 @@ static void test_snapshot_reports_running_effect(void) {
 static void test_snapshot_hides_pending_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     m.onButton(click(3), now);  // pending_ = Dark
     TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
@@ -1448,7 +1467,7 @@ static void test_snapshot_hides_pending_effect(void) {
 static void test_snapshot_fields(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     StateSnapshot s0 = m.snapshot();
     TEST_ASSERT_FALSE(s0.on);
     TEST_ASSERT_EQUAL_UINT8(cfg::DEFAULT_BRIGHTNESS, s0.brightness);
@@ -1469,7 +1488,7 @@ static void test_snapshot_fields(void) {
 static void test_snapshot_reflects_night_mode_and_automation(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
 
     m.apply(nightModeCmd(true), now);
     TEST_ASSERT_TRUE(m.snapshot().nightMode);
@@ -1487,7 +1506,7 @@ static void test_snapshot_reflects_night_mode_and_automation(void) {
 static void test_frame_dirty_only_on_change(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     TEST_ASSERT_TRUE(m.takeFrameDirty());   // begin() dirties the (cleared) frame
     TEST_ASSERT_FALSE(m.takeFrameDirty());  // consumed; nothing changed since
 
@@ -1506,7 +1525,7 @@ static void test_frame_dirty_only_on_change(void) {
 static void test_frame_brightness_applied(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);
     run(m, now, kSlideMs);
 
@@ -1556,16 +1575,27 @@ static uint32_t lateRandom(uint32_t bound) {
     return bound - 1;
 }
 
-static void test_glitch_first_fires_45s_after_power_on(void) {
-    Mirror m(zeroRandom);
+static void test_auto_effect_upper_bound_is_90s(void) {
+    Mirror m(lateRandom);
     uint32_t now = 0;
     m.begin(now);
+    powerOnSettled(m, now);
+    run(m, now, 89995 - now);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    run(m, now, 5);
+    TEST_ASSERT_TRUE(EffectId::None != m.snapshot().effect);
+}
+
+static void test_glitch_first_fires_20s_after_power_on(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
     const StateSnapshot before = m.snapshot();
 
-    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MIN_MS - 5, kSolidDefault),
-                              "glitch before 45 s");
-    now = onAt + cfg::GLITCH_INTERVAL_MIN_MS;
+    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, onAt + 20000 - 5, kSolidDefault),
+                              "glitch before 20 s");
+    now = onAt + 20000;
     m.tick(now);
     const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
     TEST_ASSERT_TRUE(off == m.frame()[0]);
@@ -1582,14 +1612,14 @@ static void test_glitch_first_fires_45s_after_power_on(void) {
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "base not restored after the glitch");
 }
 
-static void test_glitch_interval_upper_bound_is_90s(void) {
+static void test_glitch_interval_upper_bound_is_30s(void) {
     Mirror m(lateRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
 
-    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MAX_MS - 5, kSolidDefault));
-    now = onAt + cfg::GLITCH_INTERVAL_MAX_MS;
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 30000 - 5, kSolidDefault));
+    now = onAt + 30000;
     m.tick(now);
     const Rgbw off = scale(kSolidDefault, kGlitchLevels[0]);
     TEST_ASSERT_TRUE(off == m.frame()[167]);
@@ -1602,20 +1632,20 @@ static void test_glitch_interval_upper_bound_is_90s(void) {
     TEST_ASSERT_TRUE(kSolidDefault == m.frame()[160]);
 }
 
-static void test_glitch_never_in_makeup(void) {
+static void test_glitch_runs_in_makeup(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
     m.apply(makeupCmd(true), now);
     run(m, now, cfg::TRANSITION_MS + 50);  // let the colour fade finish
-    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kMakeupColor));
+    TEST_ASSERT_TRUE(glitchSeenUntil(m, now, onAt + 20000 + 5, kMakeupColor));
 }
 
 static void test_glitch_never_when_automation_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
     m.apply(automationCmd(false), now);
     TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
@@ -1624,13 +1654,13 @@ static void test_glitch_never_when_automation_off(void) {
 static void test_glitch_switch_disables_and_reenables(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     TEST_ASSERT_TRUE(m.snapshot().glitch);  // on by default
     const uint32_t onAt = powerOnSettled(m, now);
 
     m.apply(glitchCmd(false), now);
     TEST_ASSERT_FALSE(m.snapshot().glitch);
-    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + 2 * cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
+    TEST_ASSERT_FALSE(glitchSeenUntil(m, now, onAt + cfg::GLITCH_INTERVAL_MAX_MS, kSolidDefault));
 
     m.apply(glitchCmd(true), now);
     TEST_ASSERT_TRUE(m.snapshot().glitch);
@@ -1640,7 +1670,7 @@ static void test_glitch_switch_disables_and_reenables(void) {
 static void test_glitch_skipped_while_button_held(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
 
     run(m, now, cfg::GLITCH_INTERVAL_MIN_MS - 1000);
@@ -1667,7 +1697,7 @@ static uint32_t frameHash(const Frame& f) {
 // registry singletons, so the two runs below must be sequential, not
 // interleaved).
 static void recordEffectFrames(bool glitchOn, std::vector<uint32_t>& hashes, Mirror& m, uint32_t& now) {
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(glitchCmd(glitchOn), now);
     const uint32_t onAt = powerOnSettled(m, now);
     run(m, now, cfg::GLITCH_INTERVAL_MIN_MS - 1000 - (now - onAt));
@@ -1698,16 +1728,16 @@ static void test_glitch_skipped_during_effect(void) {
     }
 
     TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
-    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, now + 30000, kSolidDefault),
+    TEST_ASSERT_FALSE_MESSAGE(glitchSeenUntil(m, now, now + 5000, kSolidDefault),
                               "a glitch due during an effect was deferred instead of skipped");
 }
 
 static void test_glitch_cancelled_by_color_change(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
-    now = onAt + cfg::GLITCH_INTERVAL_MIN_MS;
+    now = onAt + 20000;
     m.tick(now);
     TEST_ASSERT_FALSE(allPixelsEqual(m.frame(), kSolidDefault));  // glitch running
 
@@ -1727,7 +1757,7 @@ static void test_glitch_cancelled_by_color_change(void) {
 static void test_glitch_does_not_delay_auto_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);  // activity at t=0 -> auto effect after AUTO_EFFECT_MIN_MS
 
     bool glitched = false;
@@ -1751,7 +1781,7 @@ static bool channelBetween(uint8_t v, uint8_t lo, uint8_t hi) { return v >= lo &
 static void test_color_command_transitions_over_500ms(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
 
     m.apply(lightColor(0, 0, 255), now);
@@ -1771,7 +1801,7 @@ static void test_color_command_transitions_over_500ms(void) {
 static void test_brightness_command_transitions(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
 
     m.apply(lightBrightness(55), now);
@@ -1786,7 +1816,7 @@ static void test_brightness_command_transitions(void) {
 static void test_makeup_toggle_transitions(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
 
     m.onButton(click(2), now);  // solid -> makeup
@@ -1802,7 +1832,7 @@ static void test_makeup_toggle_transitions(void) {
 static void test_command_mid_transition_continues_from_shown_colour(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
 
     m.apply(lightColor(0, 0, 255), now);
@@ -1819,7 +1849,7 @@ static void test_command_mid_transition_continues_from_shown_colour(void) {
 static void test_hold_dimming_stays_immediate(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
 
     m.onButton(holdStart(), now);
@@ -1836,7 +1866,7 @@ static void test_hold_dimming_stays_immediate(void) {
 static void test_power_on_from_off_uses_new_colour_at_once(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.apply(makeupCmd(true), now);  // from OFF: base = makeup and power on, no fade
     run(m, now, cfg::SLIDE_STEP_MS * 12);
     bool sawLit = false;
@@ -1853,7 +1883,7 @@ static void test_power_on_from_off_uses_new_colour_at_once(void) {
 static void test_click2_during_slide_off_shows_makeup(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.onButton(click(1), now);
     run(m, now, cfg::SLIDE_STEP_MS * 5);
@@ -1874,7 +1904,7 @@ static void test_click2_during_slide_off_shows_makeup(void) {
 static void test_warning_dims_to_half_one_minute_before_auto_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);  // activity at the click (t = 0)
     m.apply(glitchCmd(false), now);
 
@@ -1890,7 +1920,7 @@ static void test_warning_dims_to_half_one_minute_before_auto_off(void) {
 static void test_activity_during_warning_restores_and_postpones(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + 5000 - now);
@@ -1906,22 +1936,22 @@ static void test_activity_during_warning_restores_and_postpones(void) {
     TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
 }
 
-static void test_no_warning_when_automation_off(void) {
+static void test_warning_when_automation_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(automationCmd(false), now);
-    run(m, now, cfg::AUTO_OFF_MS + 60000);
+    run(m, now, 840000 + 2500 - now);
     TEST_ASSERT_TRUE(PowerState::On == m.power());
-    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kSolidDefault));
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL))));
 }
 
 // Switching automation off mid-warning must not leave the light at 50 % for good.
-static void test_automation_off_during_warning_restores_brightness(void) {
+static void test_automation_off_does_not_cancel_warning(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
@@ -1929,21 +1959,21 @@ static void test_automation_off_during_warning_restores_brightness(void) {
 
     m.apply(automationCmd(false), now);
     run(m, now, cfg::WARN_FADE_OUT_MS + 100);
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kSolidDefault), "still dimmed after automation was switched off");
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL))),
+                             "automation switch cancelled the safety warning");
 }
 
-// Auto effect after 280 s of idle (and the dark snake, pixel 0, +1): the
-// auto effects then land at ~280 s, ~569 s and ~858 s — the last one inside
-// the warning minute (840..900 s). An effect started by a command would not
-// do: a command is activity and ends the warning (v1.2.1).
-static uint32_t autoEffectEvery280s(uint32_t bound) {
-    return bound == cfg::AUTO_EFFECT_MAX_MS - cfg::AUTO_EFFECT_MIN_MS ? 40000 : 0;
+// Auto effect after 80 s of idle (dark snake, pixel 0, +1): repeated
+// effects reach the warning minute (840..900 s). A manual effect would
+// not do: a command is activity and ends the warning (v1.2.1).
+static uint32_t autoEffectEvery80s(uint32_t bound) {
+    return bound == cfg::AUTO_EFFECT_MAX_MS - cfg::AUTO_EFFECT_MIN_MS ? 20000 : 0;
 }
 
 static void test_warning_scales_a_running_effect(void) {
-    Mirror m(autoEffectEvery280s);
+    Mirror m(autoEffectEvery80s);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
@@ -1957,36 +1987,32 @@ static void test_warning_scales_a_running_effect(void) {
     TEST_ASSERT_TRUE(scale(kSolidDefault, cie8(cfg::WARN_DIM_LEVEL)) == m.frame()[100]);
 }
 
-// --- Makeup keeps the light for 45 minutes (v1.2.0) -------------------------
-// The limit follows the base mode, and a mode change counts as activity: the
-// idle time spent in makeup must not switch the light off the moment the user
-// goes back to solid. No auto-effects or glitches run in makeup, so the frame
-// checks below are stable.
+// --- Both modes share the 15-minute inactivity limit (v1.6.0) --------------
+// A mode change counts as activity and restarts the shared timer. Automatic
+// effects and glitches may run in either mode without extending that timer.
 
-static void test_makeup_auto_off_after_45_minutes(void) {
+static void test_makeup_auto_off_after_15_minutes(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
     m.begin(now);
     powerOnSettled(m, now);
-    m.apply(makeupCmd(true), now);
-
-    run(m, now, cfg::AUTO_OFF_MS + 5UL * 60 * 1000);  // 20 min idle: solid would be off by now
-    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "makeup switched off before 45 min");
-    run(m, now, cfg::AUTO_OFF_MAKEUP_MS - (cfg::AUTO_OFF_MS + 5UL * 60 * 1000) - 60000);
-    TEST_ASSERT_TRUE(PowerState::On == m.power());  // 44 min
-    run(m, now, 60000 + 100 + kSlideMs);
-    TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "makeup did not auto-off after 45 min");
+    run(m, now, 900000 - now);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "makeup switched off before 15 min");
+    run(m, now, 5);
+    TEST_ASSERT_TRUE_MESSAGE(PowerState::SlideOff == m.power(), "makeup did not auto-off after 15 min");
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
 }
 
 static void test_makeup_warning_comes_a_minute_before_its_own_limit(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
-    m.apply(makeupCmd(true), now);  // activity: the 45 min are counted from here
+    m.apply(makeupCmd(true), now);  // activity: the 15 min are counted from here
 
-    run(m, now, cfg::AUTO_OFF_MAKEUP_MS - cfg::AUTO_OFF_WARN_MS - 10);
-    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor), "dimmed before the 44th minute");
+    run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS - 10);
+    TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor), "dimmed before the 14th minute");
     run(m, now, 10 + cfg::WARN_FADE_IN_MS + 100);
     TEST_ASSERT_TRUE_MESSAGE(allPixelsEqual(m.frame(), scale(kMakeupColor, cie8(cfg::WARN_DIM_LEVEL))),
                              "no warning a minute before the makeup limit");
@@ -1995,10 +2021,10 @@ static void test_makeup_warning_comes_a_minute_before_its_own_limit(void) {
 static void test_leaving_makeup_restarts_the_idle_timer(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(makeupCmd(true), now);
-    run(m, now, 30UL * 60 * 1000);  // 30 min idle in makeup
+    run(m, now, 10UL * 60 * 1000);  // 10 min idle in makeup
 
     m.apply(makeupCmd(false), now);  // back to solid, whose limit is 15 min
     run(m, now, cfg::AUTO_OFF_MS - 60000);
@@ -2008,14 +2034,17 @@ static void test_leaving_makeup_restarts_the_idle_timer(void) {
 }
 
 // The same, through the double click (it goes through onButton, not apply).
-static void test_click2_into_makeup_extends_the_limit(void) {
+static void test_click2_into_makeup_restarts_the_limit(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
-    m.onButton(click(2), now);  // solid -> makeup
-    run(m, now, cfg::AUTO_OFF_MS + 5UL * 60 * 1000);
+    run(m, now, 10UL * 60 * 1000);
+    m.onButton(click(2), now);  // solid -> makeup is activity, not a longer limit
+    run(m, now, 900000 - 5);
     TEST_ASSERT_TRUE(PowerState::On == m.power());
+    run(m, now, 10);
+    TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
 }
 
 // The JSON Light path (effect: makeup / solid) must restart the timer too —
@@ -2023,10 +2052,10 @@ static void test_click2_into_makeup_extends_the_limit(void) {
 static void test_light_effect_solid_after_long_makeup_restarts_the_timer(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(lightEffect(EffectRequest::Makeup), now);
-    run(m, now, 30UL * 60 * 1000);  // 30 min in makeup: past the solid limit
+    run(m, now, 10UL * 60 * 1000);  // 10 min in makeup: partway through the shared limit
 
     m.apply(lightEffect(EffectRequest::Solid), now);
     run(m, now, cfg::AUTO_OFF_MS - 60000);
@@ -2042,7 +2071,7 @@ static void test_light_effect_solid_after_long_makeup_restarts_the_timer(void) {
 static void test_ha_command_during_warning_restores_and_postpones(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(glitchCmd(false), now);
     run(m, now, cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + cfg::WARN_FADE_IN_MS + 100 - now);
@@ -2059,7 +2088,7 @@ static void test_ha_command_during_warning_restores_and_postpones(void) {
 static void test_effect_command_postpones_auto_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);  // activity at t = 0
     run(m, now, 10UL * 60 * 1000 - now);
     m.apply(randomEffectCmd(), now);  // the effect/set button in HA at 10 min
@@ -2067,12 +2096,12 @@ static void test_effect_command_postpones_auto_off(void) {
     TEST_ASSERT_TRUE_MESSAGE(PowerState::On == m.power(), "an effect command did not count as activity");
 }
 
-// The automatic effect every 4-5 min must NOT count, or the mirror would
+// The automatic effect every 60-90 s must NOT count, or the mirror would
 // never switch itself off.
 static void test_auto_effect_does_not_postpone_auto_off(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     run(m, now, cfg::AUTO_OFF_MS + kSlideMs + 1000 - now);
     TEST_ASSERT_TRUE_MESSAGE(PowerState::Off == m.power(), "auto-effects kept the mirror on");
@@ -2095,7 +2124,7 @@ static void runWithPir(Mirror& m, uint32_t& now, uint32_t ms, bool pir) {
 static void test_stuck_pir_stops_holding_the_light_on(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     runWithPir(m, now, 10000, true);  // auto-on, then HIGH for good
     TEST_ASSERT_TRUE(PowerState::On == m.power());
     runWithPir(m, now, cfg::PIR_STUCK_MS - 20000, true);
@@ -2111,7 +2140,7 @@ static void test_stuck_pir_stops_holding_the_light_on(void) {
 static void test_pir_works_again_after_going_low(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     runWithPir(m, now, cfg::PIR_STUCK_MS + cfg::AUTO_OFF_MS + kSlideMs + 10000, true);
     TEST_ASSERT_TRUE(PowerState::Off == m.power());
 
@@ -2126,7 +2155,7 @@ static void test_pir_works_again_after_going_low(void) {
 static void test_pir_with_short_drops_is_not_stuck(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     for (int i = 0; i < 3; ++i) {
         runWithPir(m, now, cfg::PIR_STUCK_MS - 60000, true);
         runWithPir(m, now, 500, false);
@@ -2139,11 +2168,11 @@ static void test_pir_with_short_drops_is_not_stuck(void) {
 static void test_choosing_solid_stops_a_running_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
-    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Embers), now);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
     run(m, now, 200);
-    TEST_ASSERT_TRUE(EffectId::Embers == m.snapshot().effect);
+    TEST_ASSERT_TRUE(EffectId::Comet == m.snapshot().effect);
 
     m.apply(lightEffect(EffectRequest::Solid), now);  // picked "solid" in the HA effect list
     TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().effect, "the running effect kept going");
@@ -2154,7 +2183,7 @@ static void test_choosing_solid_stops_a_running_effect(void) {
 static void test_choosing_makeup_stops_a_running_effect(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
     run(m, now, 200);
@@ -2180,7 +2209,7 @@ static void assertUniformUntil(Mirror& m, uint32_t& now, uint32_t until, const c
 static void test_no_glitch_during_a_colour_transition(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
     // The glitch is due at onAt + 45 s; start the fade 105 ms before, so the
     // due tick falls between two 20 ms transition steps.
@@ -2192,11 +2221,12 @@ static void test_no_glitch_during_a_colour_transition(void) {
 static void test_no_glitch_during_the_warning_fade(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     const uint32_t onAt = powerOnSettled(m, now);
-    // Glitches are due at onAt + k * 45 s. Place activity so the warning
-    // starts 1005 ms before the 19th one: it lands mid-fade, between steps.
-    const uint32_t glitchAt = onAt + 19 * cfg::GLITCH_INTERVAL_MIN_MS;
+    // Choose a due glitch beyond the warning threshold, so placing activity
+    // 1005 ms before its fade never underflows the simulated wait.
+    const uint32_t intervals = (cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS) / cfg::GLITCH_INTERVAL_MIN_MS + 1;
+    const uint32_t glitchAt = onAt + intervals * cfg::GLITCH_INTERVAL_MIN_MS;
     const uint32_t warningAt = glitchAt - 1005;
     run(m, now, warningAt - (cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS) - 5 - now);
     m.onPir(true, now);  // activity -> the warning starts 840 005 ms later
@@ -2212,28 +2242,28 @@ static void test_no_glitch_during_the_warning_fade(void) {
 static void test_last_effect_is_reported_and_kept_after_it_ends(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     TEST_ASSERT_TRUE(EffectId::None == m.snapshot().lastEffect);
     powerOnSettled(m, now);
-    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Embers), now);
-    TEST_ASSERT_TRUE(EffectId::Embers == m.snapshot().lastEffect);
-    run(m, now, 30000);  // embers is ~20 s
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
+    TEST_ASSERT_TRUE(EffectId::Comet == m.snapshot().lastEffect);
+    run(m, now, 30000);  // comet finishes in ~6 s
     TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
-    TEST_ASSERT_TRUE_MESSAGE(EffectId::Embers == m.snapshot().lastEffect, "forgotten once the effect ended");
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Comet == m.snapshot().lastEffect, "forgotten once the effect ended");
     m.onButton(click(1), now);  // off
     run(m, now, kSlideMs);
-    TEST_ASSERT_TRUE_MESSAGE(EffectId::Embers == m.snapshot().lastEffect, "forgotten when the mirror went off");
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Comet == m.snapshot().lastEffect, "forgotten when the mirror went off");
 }
 
 static void test_last_effect_covers_auto_and_random_effects(void) {
     Mirror m(zeroRandom);  // random -> Dark
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     powerOnSettled(m, now);
     run(m, now, cfg::AUTO_EFFECT_MIN_MS + 1000 - now);  // the automatic one
     TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
-    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Flame), now);
-    TEST_ASSERT_TRUE(EffectId::Flame == m.snapshot().lastEffect);
+    m.apply(lightEffect(EffectRequest::Temporary, EffectId::Wave), now);
+    TEST_ASSERT_TRUE(EffectId::Wave == m.snapshot().lastEffect);
     m.apply(randomEffectCmd(), now);
     TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().lastEffect);
 }
@@ -2242,7 +2272,7 @@ static void test_last_effect_covers_auto_and_random_effects(void) {
 static void test_last_effect_set_when_a_deferred_effect_starts(void) {
     Mirror m(zeroRandom);
     uint32_t now = 0;
-    m.begin(now);
+    beginSolid(m, now);
     m.onButton(click(1), now);  // slide-on
     m.apply(lightEffect(EffectRequest::Temporary, EffectId::Comet), now);
     TEST_ASSERT_TRUE_MESSAGE(EffectId::None == m.snapshot().lastEffect, "reported before it started");
@@ -2307,11 +2337,11 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_pir_blocked_in_night_mode);
 
     RUN_TEST(test_auto_off_after_15min_idle);
-    RUN_TEST(test_no_auto_off_when_automation_off);
+    RUN_TEST(test_auto_off_when_automation_off);
     RUN_TEST(test_pir_activity_postpones_auto_off);
     RUN_TEST(test_button_event_postpones_auto_off);
     RUN_TEST(test_auto_effect_starts_in_solid);
-    RUN_TEST(test_auto_effect_not_in_makeup);
+    RUN_TEST(test_auto_effect_starts_in_makeup);
     RUN_TEST(test_enabling_automation_does_not_auto_off_immediately);
 
     RUN_TEST(test_snapshot_reports_running_effect);
@@ -2320,9 +2350,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_snapshot_reflects_night_mode_and_automation);
     RUN_TEST(test_frame_dirty_only_on_change);
     RUN_TEST(test_frame_brightness_applied);
-    RUN_TEST(test_glitch_first_fires_45s_after_power_on);
-    RUN_TEST(test_glitch_interval_upper_bound_is_90s);
-    RUN_TEST(test_glitch_never_in_makeup);
+    RUN_TEST(test_auto_effect_upper_bound_is_90s);
+    RUN_TEST(test_glitch_first_fires_20s_after_power_on);
+    RUN_TEST(test_glitch_interval_upper_bound_is_30s);
+    RUN_TEST(test_glitch_runs_in_makeup);
     RUN_TEST(test_glitch_never_when_automation_off);
     RUN_TEST(test_glitch_switch_disables_and_reenables);
     RUN_TEST(test_glitch_skipped_while_button_held);
@@ -2338,13 +2369,13 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_click2_during_slide_off_shows_makeup);
     RUN_TEST(test_warning_dims_to_half_one_minute_before_auto_off);
     RUN_TEST(test_activity_during_warning_restores_and_postpones);
-    RUN_TEST(test_no_warning_when_automation_off);
-    RUN_TEST(test_automation_off_during_warning_restores_brightness);
+    RUN_TEST(test_warning_when_automation_off);
+    RUN_TEST(test_automation_off_does_not_cancel_warning);
     RUN_TEST(test_warning_scales_a_running_effect);
-    RUN_TEST(test_makeup_auto_off_after_45_minutes);
+    RUN_TEST(test_makeup_auto_off_after_15_minutes);
     RUN_TEST(test_makeup_warning_comes_a_minute_before_its_own_limit);
     RUN_TEST(test_leaving_makeup_restarts_the_idle_timer);
-    RUN_TEST(test_click2_into_makeup_extends_the_limit);
+    RUN_TEST(test_click2_into_makeup_restarts_the_limit);
     RUN_TEST(test_light_effect_solid_after_long_makeup_restarts_the_timer);
     RUN_TEST(test_ha_command_during_warning_restores_and_postpones);
     RUN_TEST(test_effect_command_postpones_auto_off);

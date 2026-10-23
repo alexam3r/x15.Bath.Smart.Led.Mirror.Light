@@ -35,7 +35,6 @@ public:
 private:
     // --- internal operations ---
     void markActivity(uint32_t now);
-    uint32_t autoOffLimit() const;
     void endWarning(uint32_t now);
     uint32_t rollAutoEffectDelay();
     uint32_t rollGlitchDelay();
@@ -60,7 +59,7 @@ private:
     RandomFn rnd_;
 
     PowerState power_  = PowerState::Off;
-    BaseMode   base_   = BaseMode::Solid;
+    BaseMode   base_   = BaseMode::Makeup;
     EffectId   effect_  = EffectId::None;
     EffectId   pending_ = EffectId::None;
     EffectId   lastEffect_ = EffectId::None;  // for diagnostics: kept after the effect ends
@@ -75,9 +74,9 @@ private:
 
     // Shown (rendered) base colour/brightness: follow the targets r_/g_/b_/
     // base_/brightness_ through a TRANSITION_MS ramp (v1.2.0).
-    Rgbw     shownColor_{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+    Rgbw     shownColor_{0, 0, 0, 255};
     uint8_t  shownBrightness_ = cfg::DEFAULT_BRIGHTNESS;
-    Rgbw     fromColor_{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+    Rgbw     fromColor_{0, 0, 0, 255};
     uint8_t  fromBrightness_  = cfg::DEFAULT_BRIGHTNESS;
     Ramp     trans_;
     uint32_t lastTransStepMs_ = 0;

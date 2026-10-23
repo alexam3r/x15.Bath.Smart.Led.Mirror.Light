@@ -15,8 +15,6 @@
 #include "effects/Effect.h"
 #include "effects/EffectRegistry.h"
 #include "effects/Comet.h"
-#include "effects/Embers.h"
-#include "effects/Flame.h"
 #include "effects/Snake.h"
 #include "effects/SlideAnimation.h"
 #include "effects/Wave.h"
@@ -554,339 +552,11 @@ static void test_wave_golden_frames(void) {
 
 // --- EffectRegistry ----------------------------------------------------------
 
-// --- Embers (v1.3.0; deeper with soft edges in v1.3.1): sparse coals --------
-// About one spot per twelve pixels at any moment: its centre dims to 10..30 %
-// (to the eye) and back along a cosine over 1..2.5 s, with a soft edge of
-// EMBERS_EDGE pixels each side (2/3, 1/3 of the depth), every coal on its own
-// clock. Levels are perceived brightness (CIE 1931); in makeup the white
-// channel is the multiplier itself, so lightness8(f[i].w) reads a pixel's
-// perceived level directly.
-
-// Exactly one coal, at pixel 50, as deep and as short as allowed.
-static uint32_t s_spawnRolls = 0;
-static uint32_t oneCoalRandom(uint32_t bound) {
-    if (bound == 1000) return (s_spawnRolls++ == 0) ? 0 : 999;  // spawn once, never again
-    if (bound == cfg::TOTAL_LEDS) return 50;
-    return 0;  // deepest floor, shortest dip
-}
-
-static void test_embers_starts_and_ends_on_the_plain_base(void) {
-    s_lcg = 12345;
-    Embers fx;
-    Frame f;
-    EffectContext ctx{kSolid, lcgRandom};
-    fx.begin(ctx);
-    TEST_ASSERT_EQUAL_UINT16(cfg::EMBERS_STEP_MS, fx.stepIntervalMs());
-    TEST_ASSERT_TRUE(fx.step(f, ctx));
-    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "not base at the start");
-    int calls = 1;
-    while (fx.step(f, ctx)) {
-        ++calls;
-        TEST_ASSERT_TRUE_MESSAGE(calls < 2000, "embers did not finish");
-    }
-    TEST_ASSERT_EQUAL_INT(cfg::EMBERS_STEPS, calls + 1);
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "a coal was still dimmed on the last frame");
-    }
-}
-
-static void test_embers_coal_dips_to_10_percent_with_soft_edges(void) {
-    s_spawnRolls = 0;
-    Embers fx;
-    Frame f;
-    EffectContext ctx{kMakeup, oneCoalRandom};
-    fx.begin(ctx);
-    int minAt[2 * cfg::EMBERS_EDGE + 1];
-    for (int& m : minAt) m = 255;
-    bool rising = false;
-    int prevCentre = 255;
-    while (fx.step(f, ctx)) {
-        const int centre = lightness8(f[50].w);
-        if (centre > prevCentre) rising = true;
-        TEST_ASSERT_TRUE_MESSAGE(!(rising && centre < prevCentre), "the dip went down twice");
-        prevCentre = centre;
-        for (int k = -cfg::EMBERS_EDGE; k <= cfg::EMBERS_EDGE; ++k) {
-            const int l = lightness8(f[50 + k].w);
-            if (l < minAt[k + cfg::EMBERS_EDGE]) minAt[k + cfg::EMBERS_EDGE] = l;
-        }
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            if (i < 50 - cfg::EMBERS_EDGE || i > 50 + cfg::EMBERS_EDGE) {
-                TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[i], "only the coal and its edge dim");
-            }
-        }
-    }
-    TEST_ASSERT_EQUAL_UINT8(26, cfg::EMBERS_FLOOR_MIN);  // 10 % to the eye
-    const int depth = 255 - cfg::EMBERS_FLOOR_MIN;
-    TEST_ASSERT_INT_WITHIN_MESSAGE(3, cfg::EMBERS_FLOOR_MIN, minAt[cfg::EMBERS_EDGE], "the coal did not reach 10 %");
-    // Soft edge: even perceived steps from the centre out to the base.
-    for (int k = 1; k <= cfg::EMBERS_EDGE; ++k) {
-        const int want = 255 - depth * (cfg::EMBERS_EDGE + 1 - k) / (cfg::EMBERS_EDGE + 1);
-        TEST_ASSERT_INT_WITHIN_MESSAGE(4, want, minAt[cfg::EMBERS_EDGE + k], "uneven soft edge (right)");
-        TEST_ASSERT_INT_WITHIN_MESSAGE(4, want, minAt[cfg::EMBERS_EDGE - k], "uneven soft edge (left)");
-    }
-    TEST_ASSERT_TRUE(kMakeup == f[50]);  // back to base at the end
-}
-
-// Not the whole ring and not a handful: roughly one coal per eight pixels,
-// each at its own phase.
-static void test_embers_are_sparse_and_staggered(void) {
-    s_lcg = 777;
-    Embers fx;
-    Frame f;
-    EffectContext ctx{kMakeup, lcgRandom};
-    fx.begin(ctx);
-    for (int i = 0; i < 150; ++i) fx.step(f, ctx);  // past the ramp-up
-    long dimmedTotal = 0;
-    int samples = 0, maxDistinct = 0;
-    for (int step = 0; step < 300; ++step) {
-        fx.step(f, ctx);
-        bool seen[256] = {false};
-        int dimmed = 0, distinct = 0;
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            const uint8_t l = lightness8(f[i].w);
-            if (l < 255) {
-                ++dimmed;
-                if (!seen[l]) { seen[l] = true; ++distinct; }
-            }
-        }
-        TEST_ASSERT_TRUE_MESSAGE(dimmed <= (2 * cfg::EMBERS_EDGE + 1) * cfg::EMBERS_MAX_COALS,
-                                 "more pixels dimmed than coals allow");
-        dimmedTotal += dimmed;
-        ++samples;
-        if (distinct > maxDistinct) maxDistinct = distinct;
-    }
-    const long average = dimmedTotal / samples;
-    TEST_ASSERT_TRUE_MESSAGE(average >= 20, "too few coals: the effect is barely visible");
-    TEST_ASSERT_TRUE_MESSAGE(average <= 90, "too many coals: the whole ring dims");
-    TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 10, "the coals dim in step instead of on their own clocks");
-}
-
-static void test_embers_move_smoothly_and_never_below_10_percent(void) {
-    s_lcg = 4242;
-    Embers fx;
-    Frame f;
-    EffectContext ctx{kMakeup, lcgRandom};
-    fx.begin(ctx);
-    // The steepest a cosine dip can move per step, plus rounding.
-    const int maxStep = static_cast<int>(3.1416f * (255 - cfg::EMBERS_FLOOR_MIN) / cfg::EMBERS_DIP_MIN_STEPS) + 2;
-    uint8_t prev[Frame::kSize];
-    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = 255;
-    while (fx.step(f, ctx)) {
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            const int l = lightness8(f[i].w);
-            // Compared in PWM: at 10 % to the eye a PWM step spans several
-            // lightness units, so a round trip through lightness8 undershoots.
-            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::EMBERS_FLOOR_MIN), "dipped below 10 %");
-            TEST_ASSERT_INT_WITHIN_MESSAGE(maxStep, prev[i], l, "a coal jumped instead of fading");
-            TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
-            prev[i] = static_cast<uint8_t>(l);
-        }
-    }
-}
-
-// --- Flame (v1.4.0, replaces breathe; wider and deeper in v1.4.1) -----------
-// Patches breathe on their own clocks: a flat core of FLAME_CORE_MIN..MAX
-// pixels with a soft edge each side that grows with the core (10 -> 3,
-// 11 -> 4, 12 -> 4 pixels; even perceived steps), 16..20 pixels in all. The
-// core dims to 30 % to the eye (v1.4.0: 60 %) and back along a cosine over
-// 3..5 s. About 4 patches at a time, never touching.
-
-// Exactly one patch, starting at pixel 50: the narrowest and shortest, or the
-// widest and longest.
-static bool s_biggest = false;
-static uint32_t onePatchRandom(uint32_t bound) {
-    if (bound == 1000) return (s_spawnRolls++ == 0) ? 0 : 999;  // spawn once, never again
-    if (bound == cfg::TOTAL_LEDS) return 50;
-    if (bound == cfg::FLAME_CORE_MAX - cfg::FLAME_CORE_MIN + 1) return s_biggest ? bound - 1 : 0;
-    if (bound == cfg::FLAME_DIP_MAX_STEPS - cfg::FLAME_DIP_MIN_STEPS + 1) return s_biggest ? bound - 1 : 0;
-    return 0;
-}
-
-// Runs a single patch to the end in makeup and records the deepest perceived
-// level every pixel reached. Checks on the way that the core is flat and the
-// patch dips once. Returns how long, in ms, the core was visibly dimmed.
-static uint32_t runOnePatch(bool biggest, int minAt[Frame::kSize]) {
-    s_spawnRolls = 0;
-    s_biggest = biggest;
-    Flame fx;
-    Frame f;
-    EffectContext ctx{kMakeup, onePatchRandom};
-    fx.begin(ctx);
-    for (uint16_t i = 0; i < Frame::kSize; ++i) minAt[i] = 255;
-    const int core = biggest ? cfg::FLAME_CORE_MAX : cfg::FLAME_CORE_MIN;
-    const int coreFirst = 50 + cfg::flameEdge(core);
-    const int coreLast = coreFirst + core - 1;
-    bool rising = false;
-    int prevCore = 255;
-    uint32_t dimmedFrames = 0;
-    while (fx.step(f, ctx)) {
-        for (int i = coreFirst + 1; i <= coreLast; ++i) {
-            TEST_ASSERT_TRUE_MESSAGE(f[i] == f[coreFirst], "the core is not flat");
-        }
-        const int level = lightness8(f[coreFirst].w);
-        if (level < 255) ++dimmedFrames;
-        if (level > prevCore) rising = true;
-        TEST_ASSERT_TRUE_MESSAGE(!(rising && level < prevCore), "the patch dipped twice");
-        prevCore = level;
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            const int l = lightness8(f[i].w);
-            if (l < minAt[i]) minAt[i] = l;
-        }
-    }
-    TEST_ASSERT_TRUE_MESSAGE(kMakeup == f[coreFirst], "the patch is not back to base at the end");
-    return dimmedFrames * cfg::FLAME_STEP_MS;
-}
-
-// The deepest profile of a patch starting at pixel 50: the soft edge in even
-// perceived steps (1/(edge+1) .. edge/(edge+1) of the depth), a flat core at
-// the floor, nothing outside.
-static void assertPatchProfile(const int minAt[Frame::kSize], int core) {
-    const int edge = cfg::flameEdge(core);
-    const int width = core + 2 * edge;
-    const int depth = 255 - cfg::FLAME_FLOOR;
-    for (int j = 0; j < width; ++j) {
-        const int fromOutside = j < width - 1 - j ? j : width - 1 - j;
-        const int want = fromOutside < edge ? 255 - depth * (fromOutside + 1) / (edge + 1) : cfg::FLAME_FLOOR;
-        TEST_ASSERT_INT_WITHIN_MESSAGE(3, want, minAt[50 + j], "not a flat core with even soft edges");
-    }
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        if (i < 50 || i >= 50 + width) TEST_ASSERT_EQUAL_INT_MESSAGE(255, minAt[i], "a pixel outside the patch dimmed");
-    }
-}
-
-static void test_flame_starts_and_ends_on_the_plain_base(void) {
-    s_lcg = 12345;
-    Flame fx;
-    Frame f;
-    EffectContext ctx{kSolid, lcgRandom};
-    fx.begin(ctx);
-    TEST_ASSERT_EQUAL_UINT16(cfg::FLAME_STEP_MS, fx.stepIntervalMs());
-    TEST_ASSERT_EQUAL_UINT16(667, cfg::FLAME_STEPS);  // ~20 s
-    TEST_ASSERT_TRUE(fx.step(f, ctx));
-    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "not base at the start");
-    int calls = 1;
-    while (fx.step(f, ctx)) {
-        ++calls;
-        TEST_ASSERT_TRUE_MESSAGE(calls < 2000, "flame did not finish");
-    }
-    TEST_ASSERT_EQUAL_INT(cfg::FLAME_STEPS, calls + 1);
-    for (uint16_t i = 0; i < Frame::kSize; ++i) {
-        TEST_ASSERT_TRUE_MESSAGE(kSolid == f[i], "a patch was still dimmed on the last frame");
-    }
-}
-
-static void test_flame_patch_dips_to_30_percent_with_soft_edges(void) {
-    TEST_ASSERT_EQUAL_UINT8(77, cfg::FLAME_FLOOR);  // 30 % to the eye (v1.4.0: 60 %)
-    int minAt[Frame::kSize];
-    const uint32_t breathMs = runOnePatch(false, minAt);
-    // The shortest breath is ~3 s (the ends are too shallow to see).
-    TEST_ASSERT_TRUE_MESSAGE(breathMs >= 2700 && breathMs <= 3000, "the shortest breath is not ~3 s");
-    assertPatchProfile(minAt, cfg::FLAME_CORE_MIN);  // core 10, edge 3: 16 pixels
-}
-
-static void test_flame_core_10_to_12_with_a_proportional_edge_3_to_5_s(void) {
-    TEST_ASSERT_EQUAL_UINT8(10, cfg::FLAME_CORE_MIN);
-    TEST_ASSERT_EQUAL_UINT8(12, cfg::FLAME_CORE_MAX);
-    TEST_ASSERT_EQUAL_UINT8(3, cfg::flameEdge(10));
-    TEST_ASSERT_EQUAL_UINT8(4, cfg::flameEdge(11));
-    TEST_ASSERT_EQUAL_UINT8(4, cfg::flameEdge(12));
-    TEST_ASSERT_EQUAL_UINT8(20, cfg::FLAME_WIDTH_MAX);
-    int minAt[Frame::kSize];
-    const uint32_t breathMs = runOnePatch(true, minAt);
-    TEST_ASSERT_TRUE_MESSAGE(breathMs >= 4650 && breathMs <= 5010, "the longest breath is not ~5 s");
-    assertPatchProfile(minAt, cfg::FLAME_CORE_MAX);  // core 12, edge 4: 20 pixels
-}
-
-// About 4 patches at any moment, each on its own clock, with full-colour
-// pixels between them.
-static void test_flame_patches_are_apart_and_staggered(void) {
-    s_lcg = 777;
-    Flame fx;
-    Frame f;
-    EffectContext ctx{kMakeup, lcgRandom};
-    fx.begin(ctx);
-    for (int i = 0; i < 150; ++i) fx.step(f, ctx);  // past the ramp-up
-    long runsTotal = 0;
-    int samples = 0, maxDistinct = 0;
-    for (int step = 0; step < 300; ++step) {
-        fx.step(f, ctx);
-        int start = -1;
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            if (f[i].w == 255) {
-                start = i;
-                break;
-            }
-        }
-        TEST_ASSERT_TRUE_MESSAGE(start >= 0, "the whole ring dimmed");
-        // Walk the ring from a full-colour pixel: runs of dimmed pixels are
-        // the visible patches.
-        int runs = 0, runLen = 0, runMin = 255, gap = 0, leadingGap = -1, distinct = 0;
-        bool seen[256] = {false};
-        for (uint16_t k = 0; k < Frame::kSize; ++k) {
-            const uint8_t w = f[(start + k) % Frame::kSize].w;
-            if (w < 255) {
-                if (runLen == 0) {
-                    ++runs;
-                    if (leadingGap < 0) leadingGap = gap;
-                    else TEST_ASSERT_TRUE_MESSAGE(gap >= cfg::FLAME_MIN_GAP, "two patches touch");
-                    runMin = 255;
-                }
-                ++runLen;
-                if (w < runMin) runMin = w;
-                gap = 0;
-            } else {
-                if (runLen > 0) {
-                    TEST_ASSERT_TRUE_MESSAGE(runLen <= cfg::FLAME_WIDTH_MAX, "a patch wider than FLAME_WIDTH_MAX");
-                    if (!seen[runMin]) {
-                        seen[runMin] = true;
-                        ++distinct;
-                    }
-                    runLen = 0;
-                }
-                ++gap;
-            }
-        }
-        if (runs >= 2) TEST_ASSERT_TRUE_MESSAGE(gap + leadingGap >= cfg::FLAME_MIN_GAP, "two patches touch");
-        TEST_ASSERT_TRUE_MESSAGE(runs <= cfg::FLAME_MAX_PATCHES, "more patches than FLAME_MAX_PATCHES");
-        runsTotal += runs;
-        ++samples;
-        if (distinct > maxDistinct) maxDistinct = distinct;
-    }
-    const long averageX10 = runsTotal * 10 / samples;
-    TEST_ASSERT_TRUE_MESSAGE(averageX10 >= 38, "fewer than ~4 patches at a time: the effect is thin");
-    TEST_ASSERT_TRUE_MESSAGE(averageX10 <= 46, "more than ~4 patches at a time: the ring is packed");
-    TEST_ASSERT_TRUE_MESSAGE(maxDistinct >= 3, "the patches breathe in step instead of on their own clocks");
-}
-
-static void test_flame_moves_smoothly_and_never_below_30_percent(void) {
-    s_lcg = 4242;
-    Flame fx;
-    Frame f;
-    EffectContext ctx{kMakeup, lcgRandom};
-    fx.begin(ctx);
-    // The steepest a cosine dip can move per step, plus rounding.
-    const int maxStep = static_cast<int>(3.1416f * (255 - cfg::FLAME_FLOOR) / cfg::FLAME_DIP_MIN_STEPS) + 2;
-    uint8_t prev[Frame::kSize];
-    for (uint16_t i = 0; i < Frame::kSize; ++i) prev[i] = 255;
-    bool dipped = false;
-    while (fx.step(f, ctx)) {
-        for (uint16_t i = 0; i < Frame::kSize; ++i) {
-            const int l = lightness8(f[i].w);
-            TEST_ASSERT_TRUE_MESSAGE(f[i].w >= cie8(cfg::FLAME_FLOOR), "dipped below 30 %");
-            TEST_ASSERT_INT_WITHIN_MESSAGE(maxStep, prev[i], l, "a patch jumped instead of breathing");
-            TEST_ASSERT_EQUAL_UINT8(0, f[i].r);
-            if (l < 255) dipped = true;
-            prev[i] = static_cast<uint8_t>(l);
-        }
-    }
-    TEST_ASSERT_TRUE_MESSAGE(dipped, "nothing breathed");
-}
-
-// --- Comet (v1.2.0): a white head with a fading tail flies one lap ----------
+// --- Comet (v1.6.0): a yellow head with a fading tail flies one lap ---------
 // Since v1.3.0 the tail fades evenly to the eye (linear in perceived
 // brightness, CIE 1931) instead of the hand-made quadratic PWM curve.
 
-static const Rgbw kWhite{255, 255, 255, 255};
+static const Rgbw kYellow{255, 255, 0, 0};
 
 static void test_comet_finishes_after_one_lap_plus_tail(void) {
     Comet fx;
@@ -906,17 +576,17 @@ static void test_comet_finishes_after_one_lap_plus_tail(void) {
     TEST_ASSERT_EQUAL_INT(cfg::TOTAL_LEDS + cfg::COMET_TAIL + 1, calls + 1);  // one lap plus the tail
 }
 
-static void test_comet_head_is_white_with_a_tail_even_to_the_eye(void) {
+static void test_comet_head_is_yellow_with_a_tail_even_to_the_eye(void) {
     Comet fx;
     Frame f;
     EffectContext ctx{kSolid, zeroRandom};
     fx.begin(ctx);
     for (int i = 0; i <= 100; ++i) fx.step(f, ctx);  // renders step 100: head at pixel 100, full alpha
-    TEST_ASSERT_TRUE_MESSAGE(kWhite == f[100], "the head must be white");
+    TEST_ASSERT_TRUE_MESSAGE(kYellow == f[100], "the head must be saturated yellow");
     // 20 LEDs behind the head: halfway to the eye, t = 255 * (40-20) / 40
-    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kWhite, 127) == f[80]);
+    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kYellow, 127) == f[80]);
     // 10 LEDs behind: t = 255 * 30 / 40 — brighter than further back
-    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kWhite, 191) == f[90]);
+    TEST_ASSERT_TRUE(lerpPerceptual(kSolid, kYellow, 191) == f[90]);
     TEST_ASSERT_TRUE_MESSAGE(kSolid == f[60], "the tail must end after COMET_TAIL pixels");
     TEST_ASSERT_TRUE_MESSAGE(kSolid == f[101], "nothing may light up ahead of the head");
 }
@@ -932,7 +602,7 @@ static void test_comet_tail_falls_off_monotonically_and_wraps(void) {
     uint8_t prev = 255;
     for (int back = 0; back < static_cast<int>(cfg::COMET_TAIL); ++back) {
         const uint16_t idx = static_cast<uint16_t>((10 - back + cfg::TOTAL_LEDS) % cfg::TOTAL_LEDS);
-        const uint8_t v = f[idx].w;
+        const uint8_t v = f[idx].g;
         TEST_ASSERT_TRUE_MESSAGE(v <= prev, "the tail got brighter further from the head");
         prev = v;
     }
@@ -944,15 +614,17 @@ static void test_comet_tail_falls_off_monotonically_and_wraps(void) {
     }
 }
 
-static void test_comet_adds_light_in_makeup(void) {
+static void test_comet_blends_yellow_tail_into_makeup(void) {
     Comet fx;
     Frame f;
     EffectContext ctx{kMakeup, zeroRandom};
     fx.begin(ctx);
     for (int i = 0; i <= 100; ++i) fx.step(f, ctx);
-    TEST_ASSERT_TRUE(kWhite == f[100]);
-    // RGB rises on top of the white channel instead of replacing it.
-    TEST_ASSERT_TRUE(f[90].r > 0 && f[90].w == 255);
+    TEST_ASSERT_TRUE(kYellow == f[100]);
+    // Both head and tail are yellow; the tail blends back towards white.
+    TEST_ASSERT_TRUE(f[90].r > 0 && f[90].r == f[90].g && f[90].b == 0);
+    TEST_ASSERT_TRUE(f[90].w > 0 && f[90].w < 255);
+    TEST_ASSERT_TRUE(f[90].r > f[80].r && f[90].w < f[80].w);
     TEST_ASSERT_TRUE(kMakeup == f[60]);
 }
 
@@ -968,10 +640,9 @@ static void test_fade_alpha_ramps_in_and_out(void) {
 }
 
 static void test_registry_names_roundtrip(void) {
-    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Flame,
-                            EffectId::Embers, EffectId::Comet};
-    const char* expectedNames[] = {"dark", "rainbow", "wave", "flame", "embers", "comet"};
-    for (int i = 0; i < 6; ++i) {
+    const EffectId ids[] = {EffectId::Dark, EffectId::Rainbow, EffectId::Wave, EffectId::Comet};
+    const char* expectedNames[] = {"dark", "rainbow", "wave", "comet"};
+    for (int i = 0; i < 4; ++i) {
         const char* name = effectName(ids[i]);
         TEST_ASSERT_NOT_NULL(name);
         TEST_ASSERT_EQUAL_STRING(expectedNames[i], name);
@@ -984,39 +655,41 @@ static void test_registry_names_roundtrip(void) {
     TEST_ASSERT_NULL(effectInstance(EffectId::None));
     TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("bogus"));
     TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("Dark"));  // case-sensitive
-    TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("breathe"));  // replaced by flame in v1.4.0
+    TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("breathe"));
+    TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("flame"));
+    TEST_ASSERT_TRUE(EffectId::None == effectIdFromName("embers"));
 
     TEST_ASSERT_EQUAL_STRING("solid", baseModeName(BaseMode::Solid));
     TEST_ASSERT_EQUAL_STRING("makeup", baseModeName(BaseMode::Makeup));
 }
 
-// Deterministic RandomFn cycling 0,1,2 (kEffects has exactly 3 entries).
-static uint32_t s_cycleIdx = 0;
-static uint32_t cyclingRandom(uint32_t bound) {
-    uint32_t v = s_cycleIdx % bound;
-    ++s_cycleIdx;
-    return v;
+static uint32_t s_ticket = 0;
+static uint32_t ticketRandom(uint32_t bound) {
+    TEST_ASSERT_EQUAL_UINT32(415, bound);
+    TEST_ASSERT_TRUE(s_ticket < bound);
+    return s_ticket;
 }
 
 static void test_random_effect_covers_all(void) {
-    s_cycleIdx = 0;
-    bool sawDark = false, sawRainbow = false, sawWave = false, sawFlame = false, sawEmbers = false,
-         sawComet = false;
-    for (int i = 0; i < 6; ++i) {
-        EffectId id = randomEffect(cyclingRandom);
-        if (id == EffectId::Dark) sawDark = true;
-        else if (id == EffectId::Rainbow) sawRainbow = true;
-        else if (id == EffectId::Wave) sawWave = true;
-        else if (id == EffectId::Flame) sawFlame = true;
-        else if (id == EffectId::Embers) sawEmbers = true;
-        else if (id == EffectId::Comet) sawComet = true;
+    unsigned dark = 0, rainbow = 0, wave = 0, comet = 0;
+    for (s_ticket = 0; s_ticket < 415; ++s_ticket) {
+        const EffectId id = randomEffect(ticketRandom);
+        const EffectId expected = s_ticket < 100 ? EffectId::Dark :
+                                  s_ticket < 215 ? EffectId::Rainbow :
+                                  s_ticket < 315 ? EffectId::Wave : EffectId::Comet;
+        TEST_ASSERT_TRUE(expected == id);
+        switch (id) {
+            case EffectId::Dark: ++dark; break;
+            case EffectId::Rainbow: ++rainbow; break;
+            case EffectId::Wave: ++wave; break;
+            case EffectId::Comet: ++comet; break;
+            default: TEST_FAIL_MESSAGE("removed or unknown effect selected"); break;
+        }
     }
-    TEST_ASSERT_TRUE_MESSAGE(sawDark, "randomEffect never returned Dark");
-    TEST_ASSERT_TRUE_MESSAGE(sawRainbow, "randomEffect never returned Rainbow");
-    TEST_ASSERT_TRUE_MESSAGE(sawWave, "randomEffect never returned Wave");
-    TEST_ASSERT_TRUE_MESSAGE(sawFlame, "randomEffect never returned Flame");
-    TEST_ASSERT_TRUE_MESSAGE(sawEmbers, "randomEffect never returned Embers");
-    TEST_ASSERT_TRUE_MESSAGE(sawComet, "randomEffect never returned Comet");
+    TEST_ASSERT_EQUAL_UINT32(100, dark);
+    TEST_ASSERT_EQUAL_UINT32(115, rainbow);
+    TEST_ASSERT_EQUAL_UINT32(100, wave);
+    TEST_ASSERT_EQUAL_UINT32(100, comet);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -1040,20 +713,11 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_wave_fades_back_to_base);
     RUN_TEST(test_wave_meeting_point_not_darker_than_single_wave);
     RUN_TEST(test_wave_golden_frames);
-    RUN_TEST(test_embers_starts_and_ends_on_the_plain_base);
-    RUN_TEST(test_embers_coal_dips_to_10_percent_with_soft_edges);
-    RUN_TEST(test_embers_are_sparse_and_staggered);
-    RUN_TEST(test_embers_move_smoothly_and_never_below_10_percent);
-    RUN_TEST(test_flame_starts_and_ends_on_the_plain_base);
-    RUN_TEST(test_flame_patch_dips_to_30_percent_with_soft_edges);
-    RUN_TEST(test_flame_core_10_to_12_with_a_proportional_edge_3_to_5_s);
-    RUN_TEST(test_flame_patches_are_apart_and_staggered);
-    RUN_TEST(test_flame_moves_smoothly_and_never_below_30_percent);
     RUN_TEST(test_fade_alpha_ramps_in_and_out);
     RUN_TEST(test_comet_finishes_after_one_lap_plus_tail);
-    RUN_TEST(test_comet_head_is_white_with_a_tail_even_to_the_eye);
+    RUN_TEST(test_comet_head_is_yellow_with_a_tail_even_to_the_eye);
     RUN_TEST(test_comet_tail_falls_off_monotonically_and_wraps);
-    RUN_TEST(test_comet_adds_light_in_makeup);
+    RUN_TEST(test_comet_blends_yellow_tail_into_makeup);
     RUN_TEST(test_registry_names_roundtrip);
     RUN_TEST(test_random_effect_covers_all);
     return UNITY_END();

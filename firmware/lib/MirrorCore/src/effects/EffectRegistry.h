@@ -12,10 +12,11 @@ struct EffectEntry {
     EffectId    id;
     const char* name;
     Effect*     effect;
+    uint16_t    weight;
 };
 
 Effect*     effectInstance(EffectId id);          // nullptr for None
 const char* effectName(EffectId id);              // its kEffects[] name; nullptr for None
 EffectId    effectIdFromName(const char* name);   // exact, case-sensitive; None if unknown
-EffectId    randomEffect(RandomFn rnd);           // kEffects[rnd(count)].id
+EffectId    randomEffect(RandomFn rnd);           // weighted selection: rainbow 115, others 100
 const char* baseModeName(BaseMode m);             // "solid" | "makeup"

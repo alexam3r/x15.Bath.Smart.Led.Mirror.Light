@@ -124,7 +124,7 @@ const char* buttonName(ButtonEventType t) {
 
 bool isLit(PowerState p) { return p == PowerState::SlideOn || p == PowerState::On; }
 
-uint32_t autoOffLimit(BaseMode b) { return b == BaseMode::Makeup ? cfg::AUTO_OFF_MAKEUP_MS : cfg::AUTO_OFF_MS; }
+uint32_t autoOffLimit(BaseMode /*base*/) { return 900000; }
 
 // The base colour the snapshot asks for (section 4.2).
 Rgbw baseColour(const StateSnapshot& s) {
@@ -157,8 +157,6 @@ uint32_t effectMaxSteps(EffectId id) {
         case EffectId::Dark:
         case EffectId::Rainbow: return cfg::TOTAL_LEDS + cfg::SNAKE_SIZE + 1;
         case EffectId::Wave: return cfg::TOTAL_LEDS / 2 + cfg::WAVE_RADIUS + 1;
-        case EffectId::Flame: return cfg::FLAME_STEPS;
-        case EffectId::Embers: return cfg::EMBERS_STEPS;
         case EffectId::Comet: return cfg::TOTAL_LEDS + cfg::COMET_TAIL + 1;
         case EffectId::None: break;
     }
@@ -556,7 +554,7 @@ private:
             } else if (p0 == PowerState::On && p == PowerState::SlideOff) {
                 // Auto-off: only with automation active and only once the idle
                 // time by the reference clock exceeds the base mode's limit.
-                if (!automationActive || idle <= limit)
+                if (idle <= limit)
                     return fail("auto-off too early: idle %.3f s, limit %lu ms, automation active=%d", idle / 1000.0,
                                 static_cast<unsigned long>(limit), automationActive);
                 ++stats.autoOffs;
@@ -565,9 +563,9 @@ private:
             } else if (p0 == PowerState::SlideOff && p == PowerState::Off) {
                 // applyDefaults() on reaching OFF resets targets, shown values
                 // and the warning; the blackout starts.
-                const Rgbw def{cfg::DEFAULT_R, cfg::DEFAULT_G, cfg::DEFAULT_B, 0};
+                const Rgbw def{0, 0, 0, 255};
                 if (s.r != cfg::DEFAULT_R || s.g != cfg::DEFAULT_G || s.b != cfg::DEFAULT_B ||
-                    s.brightness != cfg::DEFAULT_BRIGHTNESS || s.base != BaseMode::Solid ||
+                    s.brightness != cfg::DEFAULT_BRIGHTNESS || s.base != BaseMode::Makeup ||
                     s.effect != EffectId::None || m_.pending_ != EffectId::None || !(m_.shownColor_ == def) ||
                     m_.shownBrightness_ != cfg::DEFAULT_BRIGHTNESS || m_.warning_ || m_.warnLevel_ != 255)
                     return fail("OFF reached without applyDefaults(): rgb=%u,%u,%u bri=%u base=%s shown bri=%u",
@@ -605,7 +603,7 @@ private:
                 } else {
                     // Auto effect: automation active, solid base, and the time
                     // since lastIdle past its randomised delay.
-                    if (!automationActive || s.base != BaseMode::Solid || sinceIdle0 <= nextFx0)
+                    if (!automationActive || sinceIdle0 <= nextFx0)
                         return fail("auto effect %s too early: %.3f s since lastIdle, delay %lu ms, base %s",
                                     fxName(m_.effect_), sinceIdle0 / 1000.0, static_cast<unsigned long>(nextFx0),
                                     baseModeName(s.base));
@@ -647,13 +645,13 @@ private:
 
         // --- Auto-off is never late: ON with automation active is never
         // idle past the limit (and never early: see the transition above).
-        if (p == PowerState::On && automationActive && idle > limit)
+        if (p == PowerState::On && idle > limit)
             return fail("auto-off late: idle %.3f s > limit %lu ms", idle / 1000.0, static_cast<unsigned long>(limit));
 
         // --- The pre-auto-off warning is on exactly inside the last
         // AUTO_OFF_WARN_MS before auto-off; any activity ends it; without
         // automation (or while sliding on) there is none; OFF resets it.
-        if (p == PowerState::On && automationActive) {
+        if (p == PowerState::On) {
             const bool due = idle > limit - cfg::AUTO_OFF_WARN_MS;
             if (m_.warning_ != due)
                 return fail("warning=%d but %.3f s idle (warning from %lu ms idle)", m_.warning_, idle / 1000.0,
@@ -670,7 +668,7 @@ private:
 
         // --- The auto effect is never late: a quiet solid ON mirror with
         // automation starts one within its randomised 4..5 min delay.
-        if (p == PowerState::On && automationActive && s.base == BaseMode::Solid && m_.effect_ == EffectId::None) {
+        if (p == PowerState::On && automationActive && m_.effect_ == EffectId::None) {
             if (m_.nextAutoEffectMs_ < cfg::AUTO_EFFECT_MIN_MS || m_.nextAutoEffectMs_ >= cfg::AUTO_EFFECT_MAX_MS)
                 return fail("auto-effect delay %lu ms out of range", static_cast<unsigned long>(m_.nextAutoEffectMs_));
             if (t_ - lastIdle_ > m_.nextAutoEffectMs_)
@@ -704,11 +702,11 @@ private:
             }
         }
 
-        // --- The glitch runs only over a quiet, solid, lit mirror with
+        // --- The glitch runs only over a quiet, lit mirror in either base with
         // automation, never while the button is held and (v1.2.1) never
         // during a colour transition or the warning fade (section 4.6).
         const bool glitchMayRun = s.glitch && p == PowerState::On && m_.effect_ == EffectId::None &&
-                                  m_.pending_ == EffectId::None && s.base == BaseMode::Solid && automationActive &&
+                                  m_.pending_ == EffectId::None && automationActive &&
                                   !holdActive_ && !m_.trans_.active && !m_.warn_.active;
         const bool glitchOn = m_.glitch_.active();
         if (glitchOn && !glitchMayRun)
@@ -1245,7 +1243,11 @@ void test_on_for_60_days_with_automation_off(void) {
     RIG_OK(r.send(lightCmd(1)));
     RIG_OK(r.run(10000, 5));
     TEST_ASSERT_TRUE(m.power() == PowerState::On);
-    RIG_OK(r.run(60 * kDay, kIdleStep));
+    const uint64_t until = r.t() + 60 * kDay;
+    while (r.t() < until) {
+        RIG_OK(r.send(lightCmd(1)));  // explicit activity keeps the light on, not the automation flag
+        RIG_OK(r.run(10 * kMinute, kIdleStep));
+    }
     TEST_ASSERT_TRUE(m.power() == PowerState::On);
     TEST_ASSERT_TRUE(r.stats.wraps >= 2);
 
@@ -1344,7 +1346,7 @@ void test_no_glitch_during_warning_fades(void) {
 }
 
 // A command during the pre-auto-off warning ends it and restarts the timer:
-// a brightness change in solid (15 min), effect/set in makeup (45 min).
+// a brightness change in solid, effect/set in makeup (both 15 min).
 void test_command_ends_the_warning(void) {
     Rig r("commands end the warning", 0u - 20 * 60000u, 16);
     Mirror& m = r.mirror();
@@ -1362,18 +1364,18 @@ void test_command_ends_the_warning(void) {
 
     RIG_OK(r.run(5000, 20));
     RIG_OK(r.send(flagCmd(CommandType::Makeup, true)));  // switches on in makeup
-    RIG_OK(r.run(cfg::AUTO_OFF_MAKEUP_MS - cfg::AUTO_OFF_WARN_MS + 1000, 20));
+    RIG_OK(r.run(cfg::AUTO_OFF_MS - cfg::AUTO_OFF_WARN_MS + 1000, 20));
     TEST_ASSERT_TRUE_MESSAGE(m.warning_, "no warning before the makeup auto-off");
     Command fx;
     fx.type = CommandType::RandomEffect;
     RIG_OK(r.send(fx));
     TEST_ASSERT_FALSE_MESSAGE(m.warning_, "effect/set did not end the warning");
     const uint64_t makeupCmdAt = r.t();
-    RIG_OK(r.run(cfg::AUTO_OFF_MAKEUP_MS - 1000, 20));
+    RIG_OK(r.run(cfg::AUTO_OFF_MS - 1000, 20));
     TEST_ASSERT_TRUE(m.power() == PowerState::On);
     RIG_OK(r.run(2000, 20));
     TEST_ASSERT_EQUAL_UINT32(2, static_cast<uint32_t>(r.stats.autoOffs));
-    TEST_ASSERT_TRUE(r.stats.lastAutoOffT > makeupCmdAt + cfg::AUTO_OFF_MAKEUP_MS);
+    TEST_ASSERT_TRUE(r.stats.lastAutoOffT > makeupCmdAt + cfg::AUTO_OFF_MS);
 }
 
 }  // namespace

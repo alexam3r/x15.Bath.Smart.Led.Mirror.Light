@@ -15,12 +15,6 @@ void Mirror::markActivity(uint32_t now) {
 
 bool Mirror::lit() const { return power_ == PowerState::SlideOn || power_ == PowerState::On; }
 
-// How long the mirror may stay idle before it switches itself off: makeup
-// gets AUTO_OFF_MAKEUP_MS, everything else AUTO_OFF_MS (v1.2.0).
-uint32_t Mirror::autoOffLimit() const {
-    return base_ == BaseMode::Makeup ? cfg::AUTO_OFF_MAKEUP_MS : cfg::AUTO_OFF_MS;
-}
-
 // Leaves the warning and ramps the render back to full brightness.
 void Mirror::endWarning(uint32_t now) {
     warning_ = false;
@@ -36,14 +30,14 @@ uint32_t Mirror::rollGlitchDelay() {
     return cfg::GLITCH_INTERVAL_MIN_MS + rnd_(cfg::GLITCH_INTERVAL_MAX_MS - cfg::GLITCH_INTERVAL_MIN_MS);
 }
 
-// The glitch only runs over a quiet, solid, lit mirror with automation on:
-// never in makeup, during an effect/slide/pending effect, while the button
+// The glitch only runs over a quiet, lit mirror with automation on:
+// either base, never during an effect/slide/pending effect, while the button
 // is held, or during a colour transition or warning fade (v1.2.1 — those
 // redraw every 20 ms, so a glitch started between two steps would be cut
 // off by the next one: a 15..20 ms blip).
 bool Mirror::glitchAllowed() const {
     return glitchEnabled_ && power_ == PowerState::On && effect_ == EffectId::None &&
-           pending_ == EffectId::None && base_ == BaseMode::Solid && gate_.automationActive() &&
+           pending_ == EffectId::None && gate_.automationActive() &&
            !holding_ && !trans_.active && !warn_.active;
 }
 
@@ -197,7 +191,7 @@ void Mirror::applyDefaults() {
     r_ = cfg::DEFAULT_R;
     g_ = cfg::DEFAULT_G;
     b_ = cfg::DEFAULT_B;
-    base_ = BaseMode::Solid;
+    base_ = BaseMode::Makeup;
     brightness_ = cfg::DEFAULT_BRIGHTNESS;
     effect_ = EffectId::None;
     pending_ = EffectId::None;
@@ -257,8 +251,8 @@ void Mirror::apply(const Command& cmd, uint32_t now) {
                 startRandomEffect(now);
             }
             // A command to a lit mirror is activity (v1.2.1): whoever sent it
-            // is there, even out of the PIR's sight. This also restarts the
-            // timer on a mode change, whose two modes have different limits.
+            // is there, even out of the PIR's sight. Mode changes also
+            // restart the shared 15-minute inactivity timer.
             if (lit()) markActivity(now);
             break;
         }
@@ -396,9 +390,9 @@ void Mirror::tick(uint32_t now) {
         staticDirty_ = true;
     }
 
-    if (gate_.automationActive() && power_ == PowerState::On) {
+    if (power_ == PowerState::On) {
         const uint32_t idle = (uint32_t)(now - lastActivity_);
-        const uint32_t limit = autoOffLimit();
+        const uint32_t limit = cfg::AUTO_OFF_MS;
         if (idle > limit) {
             MLOG("[%lu] AUTO-OFF (idle %lu ms)\n", (unsigned long)now, (unsigned long)idle);
             powerOff(false, now);
@@ -409,13 +403,11 @@ void Mirror::tick(uint32_t now) {
                 lastWarnStepMs_ = now;
                 MLOG("[%lu] AUTO-OFF WARNING (dim to 50%%)\n", (unsigned long)now);
             }
-            if (effect_ == EffectId::None && base_ == BaseMode::Solid &&
+            if (effect_ == EffectId::None && gate_.automationActive() &&
                 (uint32_t)(now - lastIdle_) > nextAutoEffectMs_) {
                 startRandomEffect(now);
             }
         }
-    } else if (warning_ && (power_ == PowerState::On || power_ == PowerState::SlideOn)) {
-        endWarning(now);  // automation switched off mid-warning: back to full brightness
     }
 
     if (warn_.active && (uint32_t)(now - lastWarnStepMs_) >= cfg::TRANSITION_STEP_MS) {

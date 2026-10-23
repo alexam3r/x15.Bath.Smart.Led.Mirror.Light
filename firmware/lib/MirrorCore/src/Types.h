@@ -8,7 +8,7 @@
 
 enum class PowerState : uint8_t { Off, SlideOn, On, SlideOff };
 enum class BaseMode   : uint8_t { Solid, Makeup };
-enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave, Flame, Embers, Comet };  // temporary effects (see kEffects[])
+enum class EffectId   : uint8_t { None = 0, Dark, Rainbow, Wave, Comet };  // temporary effects (see kEffects[])
 // What the JSON Light `effect` field asks for. Every temporary effect is
 // `Temporary` + LightCommand::effectId, so adding an effect never touches
 // this enum.
@@ -40,7 +40,7 @@ struct StateSnapshot {
     bool     on = false;  // SLIDE_ON / ON
     uint8_t  brightness = 255;
     uint8_t  r = 255, g = 140, b = 50;
-    BaseMode base = BaseMode::Solid;
+    BaseMode base = BaseMode::Makeup;
     EffectId effect = EffectId::None;
     bool     automation = true;
     bool     nightMode = false;

@@ -2,12 +2,9 @@
 // Static instances only — no heap allocation on Core 1.
 #include "EffectRegistry.h"
 
-#include <cstddef>
 #include <cstring>
 
 #include "Comet.h"
-#include "Embers.h"
-#include "Flame.h"
 #include "Snake.h"
 #include "Wave.h"
 
@@ -15,20 +12,15 @@ namespace {
 
 Comet        s_comet;
 DarkSnake    s_dark;
-Embers       s_embers;
-Flame        s_flame;
 RainbowSnake s_rainbow;
 Wave         s_wave;
 
 const EffectEntry kEffects[] = {
-    {EffectId::Dark,    "dark",    &s_dark},
-    {EffectId::Rainbow, "rainbow", &s_rainbow},
-    {EffectId::Wave,    "wave",    &s_wave},
-    {EffectId::Flame,   "flame",   &s_flame},
-    {EffectId::Embers,  "embers",  &s_embers},
-    {EffectId::Comet,   "comet",   &s_comet},
+    {EffectId::Dark,    "dark",    &s_dark,    100},
+    {EffectId::Rainbow, "rainbow", &s_rainbow, 115},
+    {EffectId::Wave,    "wave",    &s_wave,    100},
+    {EffectId::Comet,   "comet",   &s_comet,   100},
 };
-constexpr size_t kEffectCount = sizeof(kEffects) / sizeof(kEffects[0]);
 
 }  // namespace
 
@@ -55,7 +47,14 @@ EffectId effectIdFromName(const char* name) {
 }
 
 EffectId randomEffect(RandomFn rnd) {
-    return kEffects[rnd(static_cast<uint32_t>(kEffectCount))].id;
+    uint32_t total = 0;
+    for (const auto& e : kEffects) total += e.weight;
+    uint32_t ticket = rnd(total);
+    for (const auto& e : kEffects) {
+        if (ticket < e.weight) return e.id;
+        ticket -= e.weight;
+    }
+    return EffectId::None;  // RandomFn must return a value in [0, total).
 }
 
 const char* baseModeName(BaseMode m) {

@@ -31,52 +31,8 @@ constexpr uint16_t WAVE_RADIUS  = 18;
 constexpr uint16_t WAVE_CORE    = 3;
 constexpr uint32_t WAVE_STEP_MS = 45;
 
-// --- Embers effect (v1.3.0, deeper with soft edges in v1.3.1) ---------------
-// Sparse smouldering coals: every step a new coal lights with probability
-// EMBERS_SPAWN_PER_MILLE (about one spot per twelve pixels at any moment).
-// A coal dims its centre to a random floor of EMBERS_FLOOR_MIN..MAX perceived
-// brightness and back along a cosine over EMBERS_DIP_MIN..MAX_STEPS, with a
-// soft edge of EMBERS_EDGE pixels each side whose depth falls off in even
-// perceived steps (2/3, 1/3 for an edge of 2). Coals start at least
-// EMBERS_MIN_GAP pixels apart; no new ones in the last EMBERS_DIP_MAX_STEPS,
-// so the effect dies down on its own. ~20 s.
-constexpr uint32_t EMBERS_STEP_MS         = 30;
-constexpr uint16_t EMBERS_STEPS           = 667;  // ~20 s
-constexpr uint8_t  EMBERS_MAX_COALS       = 24;
-constexpr uint16_t EMBERS_SPAWN_PER_MILLE = 250;
-constexpr uint8_t  EMBERS_FLOOR_MIN       = 26;   // 10 % to the eye (v1.3.0: 30 %)
-constexpr uint8_t  EMBERS_FLOOR_MAX       = 77;   // 30 % to the eye (v1.3.0: 50 %)
-constexpr uint8_t  EMBERS_DIP_MIN_STEPS   = 33;   // ~1 s
-constexpr uint8_t  EMBERS_DIP_MAX_STEPS   = 83;   // ~2.5 s
-constexpr uint8_t  EMBERS_EDGE            = 2;    // soft edge, pixels each side
-constexpr uint8_t  EMBERS_MIN_GAP         = 2 * EMBERS_EDGE + 1;
-
-// --- Flame effect (v1.4.0, replaces breathe; wider and deeper in v1.4.1) -----
-// Patches breathe on their own clocks: every step a new patch appears with
-// probability FLAME_SPAWN_PER_MILLE at a random place at least FLAME_MIN_GAP
-// full-colour pixels clear of the others (about 4 at a time). A patch is a
-// flat core of FLAME_CORE_MIN..MAX pixels with a soft edge of flameEdge(core)
-// pixels each side (even perceived steps), 16..20 pixels in all; the core
-// dims to FLAME_FLOOR and back along a cosine over FLAME_DIP_MIN..MAX_STEPS.
-// No new patches in the last FLAME_DIP_MAX_STEPS, so the effect dies down on
-// its own. ~20 s. v1.4.0: 10..15 pixels with the edge, 60 % to the eye.
-constexpr uint32_t FLAME_STEP_MS         = 30;
-constexpr uint16_t FLAME_STEPS           = 667;  // ~20 s
-constexpr uint8_t  FLAME_MAX_PATCHES     = 8;
-constexpr uint16_t FLAME_SPAWN_PER_MILLE = 150;  // most tries land on a patch: ~4 at a time
-constexpr uint8_t  FLAME_FLOOR           = 77;   // 30 % to the eye (v1.4.0: 153, 60 %)
-constexpr uint8_t  FLAME_DIP_MIN_STEPS   = 100;  // ~3 s
-constexpr uint8_t  FLAME_DIP_MAX_STEPS   = 167;  // ~5 s
-constexpr uint8_t  FLAME_CORE_MIN        = 10;   // flat core, pixels
-constexpr uint8_t  FLAME_CORE_MAX        = 12;
-constexpr uint8_t  FLAME_MIN_GAP         = 2;    // full-colour pixels between patches
-// The soft edge each side grows with the core, a third of it rounded:
-// 10 -> 3, 11 -> 4, 12 -> 4 pixels.
-constexpr uint8_t flameEdge(uint8_t core) { return static_cast<uint8_t>((core + 1) / 3); }
-constexpr uint8_t  FLAME_WIDTH_MAX       = FLAME_CORE_MAX + 2 * flameEdge(FLAME_CORE_MAX);  // 20
-
 // --- Comet effect (v1.2.0) --------------------------------------------------
-// A white head with a COMET_TAIL-pixel tail (fading evenly to the eye, v1.3.0) travels once around the
+// A yellow head with a COMET_TAIL-pixel tail (fading evenly to the eye, v1.3.0) travels once around the
 // ring (TOTAL_LEDS + COMET_TAIL steps), fading in and out over COMET_FADE_STEPS.
 constexpr uint32_t COMET_STEP_MS    = 30;
 constexpr uint16_t COMET_TAIL       = 40;
@@ -85,8 +41,9 @@ constexpr uint16_t COMET_FADE_STEPS = 20;
 // --- Slide effect -------------------------------------------------------
 // v1.0.1: ~20% slower and ~20% longer soft edge than v27 (28 ms, 9 LEDs):
 // 97 steps * 33 ms = ~3.2 s instead of 95 * 28 ms = ~2.7 s. v1.3.2: the edge
-// 1.5x longer and even to the eye (CIE 1931): 102 steps * 33 ms = ~3.4 s.
-constexpr uint32_t SLIDE_STEP_MS    = 33;
+// 1.5x longer and even to the eye (CIE 1931). v1.6.0: 1.5x faster than
+// 33 ms, so 102 steps * 22 ms = ~2.2 s (plus loop scheduling).
+constexpr uint32_t SLIDE_STEP_MS    = 22;
 constexpr uint16_t SLIDE_EDGE       = 16;  // 15 lit edge pixels, even to the eye (v1.3.2; v1.0.1: 11)
 constexpr uint16_t SLIDE_MAX_RADIUS = TOTAL_LEDS / 2 + SLIDE_EDGE + 2;  // 102
 
@@ -104,11 +61,11 @@ constexpr uint32_t SIGNAL_STEP_MS      = 20;
 // --- Glitch overlay ("neon failure", v1.1.0) -----------------------------
 // A random core of GLITCH_LEN_MIN..MAX adjacent pixels flickers in the base
 // colour for GLITCH_DURATION_MIN..MAX ms, once every GLITCH_INTERVAL_MIN..MAX
-// (random) while the mirror is ON, solid and idle (see Mirror::tick). A soft
+// (random) while the mirror is ON and idle in either base (see Mirror::tick). A soft
 // edge of GLITCH_EDGE_MIN..MAX pixels each side fades back to the base in
 // even perceived steps (v1.1.1: 2..3 pixels; v1.3.0: 4..6, CIE 1931).
-constexpr uint32_t GLITCH_INTERVAL_MIN_MS = 45UL * 1000;
-constexpr uint32_t GLITCH_INTERVAL_MAX_MS = 90UL * 1000;
+constexpr uint32_t GLITCH_INTERVAL_MIN_MS = 20UL * 1000;
+constexpr uint32_t GLITCH_INTERVAL_MAX_MS = 30UL * 1000;
 constexpr uint32_t GLITCH_DURATION_MIN_MS = 300;
 constexpr uint32_t GLITCH_DURATION_MAX_MS = 600;
 constexpr uint8_t  GLITCH_LEN_MIN         = 3;
@@ -129,9 +86,8 @@ constexpr uint8_t DEFAULT_BRIGHTNESS = 255;
 
 // --- Timers (ms) ------------------------------------------------------------
 constexpr uint32_t AUTO_OFF_MS        = 15UL * 60 * 1000;  // 15 min
-constexpr uint32_t AUTO_OFF_MAKEUP_MS = 45UL * 60 * 1000;  // 45 min in makeup (v1.2.0)
-constexpr uint32_t AUTO_EFFECT_MIN_MS = 4UL * 60 * 1000;   // 4 min
-constexpr uint32_t AUTO_EFFECT_MAX_MS = 5UL * 60 * 1000;   // 5 min
+constexpr uint32_t AUTO_EFFECT_MIN_MS = 60UL * 1000;      // 60 s
+constexpr uint32_t AUTO_EFFECT_MAX_MS = 90UL * 1000;      // 90 s (exclusive)
 constexpr uint32_t PIR_COOLDOWN_MS    = 15UL * 1000;       // 15 s
 constexpr uint32_t PIR_BLACKOUT_MS    = 2UL * 1000;        // 2 s
 // A PIR HIGH without a break for this long is stuck: it stops counting as
@@ -220,6 +176,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.5.1";
+constexpr char FW_VERSION[] = "1.6.0";
 
 }  // namespace cfg

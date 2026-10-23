@@ -1,6 +1,6 @@
-// Comet (v1.2.0): a bright white head with a fading tail flies once around
-// the ring, from a random pixel and in a random direction. Pixels are lerped
-// from the base towards white, so it adds light in solid and in makeup alike.
+// Comet (v1.2.0, yellow since v1.6.0): a yellow head with a fading tail flies
+// once around the ring, from a random pixel and in a random direction.
+// Pixels blend from the base towards yellow, replacing W on a makeup base.
 #pragma once
 
 #include <cstdint>
