@@ -176,6 +176,6 @@ constexpr uint32_t FRAME_REFRESH_MS = 2000;
 constexpr uint32_t SERIAL_WAIT_MS     = 3000;  // debug build only (main.cpp setup)
 
 // --- Firmware version -----------------------------------------------------
-constexpr char FW_VERSION[] = "1.6.0";
+constexpr char FW_VERSION[] = "1.7.0";
 
 }  // namespace cfg

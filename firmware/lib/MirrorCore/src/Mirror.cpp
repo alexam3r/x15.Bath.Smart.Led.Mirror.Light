@@ -9,7 +9,7 @@
 Mirror::Mirror(RandomFn rnd) : rnd_(rnd) {}
 
 void Mirror::markActivity(uint32_t now) {
-    lastActivity_ = lastIdle_ = now;
+    lastActivity_ = now;  // occupancy extends power, never the automatic-effect pause
     if (warning_) endWarning(now);
 }
 
@@ -77,9 +77,12 @@ EffectContext Mirror::ctx() const { return EffectContext{baseColor(), rnd_}; }
 
 void Mirror::powerOn(uint32_t now) {
     if (power_ == PowerState::Off) {
-        slide_.startOn(cfg::CENTERS[rnd_(cfg::CENTERS_CNT)]);
+        segmentedPower_ = rnd_(2) != 0;
+        if (segmentedPower_) segments_.startOn(rnd_);
+        else slide_.startOn(cfg::CENTERS[rnd_(cfg::CENTERS_CNT)]);
     } else if (power_ == PowerState::SlideOff) {
-        slide_.reverseToOn();
+        if (segmentedPower_) segments_.reverseToOn();
+        else slide_.reverseToOn();
     } else {
         return;  // SlideOn/On: no-op (table 4.1)
     }
@@ -90,6 +93,7 @@ void Mirror::powerOn(uint32_t now) {
     lastStepMs_ = now;
     gate_.onPowerOn();
     markActivity(now);
+    lastIdle_ = now;
     MLOG("[%lu] POWER ON -> SLIDE_ON\n", (unsigned long)now);
 }
 
@@ -151,7 +155,15 @@ void Mirror::powerOff(bool manual, uint32_t now) {
     }
     effect_ = EffectId::None;
     pending_ = EffectId::None;
-    slide_.startOff();
+    if (power_ == PowerState::On) {
+        segmentedPower_ = rnd_(2) != 0;
+        if (segmentedPower_) segments_.startOff(rnd_);
+        else slide_.startOff(cfg::CENTERS[rnd_(cfg::CENTERS_CNT)]);
+    } else {
+        // An unfinished transition reverses in place, with no fresh RNG draw.
+        if (segmentedPower_) segments_.startOff();
+        else slide_.startOff();
+    }
     power_ = PowerState::SlideOff;
     lastStepMs_ = now;
     if (manual) gate_.onManualOff(now);
@@ -205,6 +217,7 @@ void Mirror::applyDefaults() {
 
 void Mirror::begin(uint32_t now) {
     markActivity(now);
+    lastIdle_ = now;
     nextAutoEffectMs_ = rollAutoEffectDelay();
     nextGlitchMs_ = rollGlitchDelay();
     frame_.clear();
@@ -419,8 +432,8 @@ void Mirror::tick(uint32_t now) {
     if ((power_ == PowerState::SlideOn || power_ == PowerState::SlideOff) &&
         (uint32_t)(now - lastStepMs_) >= cfg::SLIDE_STEP_MS) {
         lastStepMs_ = now;
-        bool wasTurningOn = slide_.turningOn();
-        bool running = slide_.step(frame_, baseColor());
+        bool wasTurningOn = segmentedPower_ ? segments_.turningOn() : slide_.turningOn();
+        bool running = segmentedPower_ ? segments_.step(frame_, baseColor()) : slide_.step(frame_, baseColor());
         finishFrame();
 
         if (!running) {

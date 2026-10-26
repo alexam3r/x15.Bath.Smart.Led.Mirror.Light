@@ -16,6 +16,7 @@
 #include "effects/Effect.h"
 #include "effects/Glitch.h"
 #include "effects/SlideAnimation.h"
+#include "effects/SegmentedAnimation.h"
 
 class Mirror {
 public:
@@ -96,11 +97,13 @@ private:
     uint32_t lastBlinkStepMs_ = 0;
 
     uint32_t lastActivity_     = 0;
-    uint32_t lastIdle_         = 0;
+    uint32_t lastIdle_         = 0;  // power-on / effect start/end, not PIR or commands
     uint32_t nextAutoEffectMs_ = 0;
     uint32_t lastStepMs_       = 0;
 
     SlideAnimation slide_;
+    SegmentedAnimation segments_;
+    bool           segmentedPower_ = false;
     MotionGate     gate_;
     GlitchOverlay  glitch_;
     bool           glitchEnabled_    = true;

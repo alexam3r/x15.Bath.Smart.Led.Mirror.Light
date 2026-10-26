@@ -340,8 +340,8 @@ private:
         fflush(stdout);
     }
 
-    // markActivity() in the reference: resets the auto-off and auto-effect timers.
-    void activity() { lastActivity_ = lastIdle_ = t_; }
+    // Occupancy resets only shutdown; effect pauses have their own clock.
+    void activity() { lastActivity_ = t_; }
 
     bool cooldownRunning() const { return cooldownOn_ && t_ - cooldownStart_ < cfg::PIR_COOLDOWN_MS; }
     bool blackoutRunning() const { return blackoutOn_ && t_ - blackoutStart_ < cfg::PIR_BLACKOUT_MS; }
@@ -354,6 +354,7 @@ private:
             // powerOn(): activity; clears night mode, cooldown and blackout.
             ++stats.powerOns;
             activity();
+            lastIdle_ = t_;
             cooldownOn_ = false;
             blackoutOn_ = false;
         } else if (isLit(p0) && p1 == PowerState::SlideOff) {
@@ -392,6 +393,11 @@ private:
                 break;
             case CommandType::Glitch: break;
         }
+        const bool requestsEffect = c.type == CommandType::RandomEffect ||
+            (c.type == CommandType::Light &&
+             (c.light.effect == EffectRequest::Random ||
+              (c.light.effect == EffectRequest::Temporary && effectInstance(c.light.effectId) != nullptr)));
+        if (p1 == PowerState::On && requestsEffect) lastIdle_ = t_;
         // v1.2.1: picking solid/makeup in the effect list ends a running or
         // pending temporary effect.
         if (c.type == CommandType::Light &&
@@ -453,6 +459,7 @@ private:
         }
         activity();  // every button event (section 4.3)
         inputChangedPower(p0, p1);
+        if (ev.type == ButtonEventType::Click && ev.clicks == 3 && p1 == PowerState::On) lastIdle_ = t_;
         const StateSnapshot s1 = m_.snapshot();
         if (ev.type == ButtonEventType::Click && !isLit(p0) && isLit(p1) && !s1.automation) {
             fail("a click switched the light on but left automation off (v1.5.0)");
@@ -601,7 +608,7 @@ private:
                                     fxName(pending0));
                     note("pending effect %s started", fxName(m_.effect_));
                 } else {
-                    // Auto effect: automation active, solid base, and the time
+                    // Auto effect: automation active, either base, and the time
                     // since lastIdle past its randomised delay.
                     if (!automationActive || sinceIdle0 <= nextFx0)
                         return fail("auto effect %s too early: %.3f s since lastIdle, delay %lu ms, base %s",
@@ -666,8 +673,8 @@ private:
         if (isLit(p) && !m_.warn_.active && m_.warnLevel_ != (m_.warning_ ? cfg::WARN_DIM_LEVEL : 255))
             return fail("warn level %u settled with warning=%d", m_.warnLevel_, m_.warning_);
 
-        // --- The auto effect is never late: a quiet solid ON mirror with
-        // automation starts one within its randomised 4..5 min delay.
+        // --- The auto effect is never late: ON in either base with automation
+        // starts one after its 60..90 s pause, independently of occupancy.
         if (p == PowerState::On && automationActive && m_.effect_ == EffectId::None) {
             if (m_.nextAutoEffectMs_ < cfg::AUTO_EFFECT_MIN_MS || m_.nextAutoEffectMs_ >= cfg::AUTO_EFFECT_MAX_MS)
                 return fail("auto-effect delay %lu ms out of range", static_cast<unsigned long>(m_.nextAutoEffectMs_));

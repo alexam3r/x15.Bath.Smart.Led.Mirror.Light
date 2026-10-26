@@ -23,6 +23,12 @@ void SlideAnimation::startOff() {
     }
 }
 
+void SlideAnimation::startOff(uint16_t center) {
+    center_ = center;
+    radius_ = cfg::SLIDE_MAX_RADIUS;
+    startOff();
+}
+
 void SlideAnimation::reverseToOn() { turningOn_ = true; }
 
 bool SlideAnimation::step(Frame& out, Rgbw base) {

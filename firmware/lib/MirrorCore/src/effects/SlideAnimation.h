@@ -21,6 +21,9 @@ public:
     // first slide-on step stays dark (Ruling R17; v27 jumped to max at 0).
     void startOff();
 
+    // Fresh full-ring shutdown, independent of the previous power animation.
+    void startOff(uint16_t center);
+
     // turningOn_ = true, radius_ kept (reversible mid slide-out).
     void reverseToOn();
 

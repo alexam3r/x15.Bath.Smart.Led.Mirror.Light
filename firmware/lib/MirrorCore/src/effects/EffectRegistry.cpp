@@ -16,10 +16,10 @@ RainbowSnake s_rainbow;
 Wave         s_wave;
 
 const EffectEntry kEffects[] = {
-    {EffectId::Dark,    "dark",    &s_dark,    100},
-    {EffectId::Rainbow, "rainbow", &s_rainbow, 115},
+    {EffectId::Dark,    "dark",    &s_dark,     90},
+    {EffectId::Rainbow, "rainbow", &s_rainbow, 130},
     {EffectId::Wave,    "wave",    &s_wave,    100},
-    {EffectId::Comet,   "comet",   &s_comet,   100},
+    {EffectId::Comet,   "comet",   &s_comet,    90},
 };
 
 }  // namespace

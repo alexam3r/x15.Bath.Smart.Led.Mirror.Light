@@ -665,18 +665,18 @@ static void test_registry_names_roundtrip(void) {
 
 static uint32_t s_ticket = 0;
 static uint32_t ticketRandom(uint32_t bound) {
-    TEST_ASSERT_EQUAL_UINT32(415, bound);
+    TEST_ASSERT_EQUAL_UINT32(410, bound);
     TEST_ASSERT_TRUE(s_ticket < bound);
     return s_ticket;
 }
 
 static void test_random_effect_covers_all(void) {
     unsigned dark = 0, rainbow = 0, wave = 0, comet = 0;
-    for (s_ticket = 0; s_ticket < 415; ++s_ticket) {
+    for (s_ticket = 0; s_ticket < 410; ++s_ticket) {
         const EffectId id = randomEffect(ticketRandom);
-        const EffectId expected = s_ticket < 100 ? EffectId::Dark :
-                                  s_ticket < 215 ? EffectId::Rainbow :
-                                  s_ticket < 315 ? EffectId::Wave : EffectId::Comet;
+        const EffectId expected = s_ticket < 90 ? EffectId::Dark :
+                                  s_ticket < 220 ? EffectId::Rainbow :
+                                  s_ticket < 320 ? EffectId::Wave : EffectId::Comet;
         TEST_ASSERT_TRUE(expected == id);
         switch (id) {
             case EffectId::Dark: ++dark; break;
@@ -686,10 +686,10 @@ static void test_random_effect_covers_all(void) {
             default: TEST_FAIL_MESSAGE("removed or unknown effect selected"); break;
         }
     }
-    TEST_ASSERT_EQUAL_UINT32(100, dark);
-    TEST_ASSERT_EQUAL_UINT32(115, rainbow);
+    TEST_ASSERT_EQUAL_UINT32(90, dark);
+    TEST_ASSERT_EQUAL_UINT32(130, rainbow);
     TEST_ASSERT_EQUAL_UINT32(100, wave);
-    TEST_ASSERT_EQUAL_UINT32(100, comet);
+    TEST_ASSERT_EQUAL_UINT32(90, comet);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {

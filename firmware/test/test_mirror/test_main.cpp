@@ -1385,7 +1385,7 @@ static void test_auto_off_when_automation_off(void) {
     TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
 }
 
-// §4.4: auto-effect only in Solid; nextAutoEffect rerolled to AUTO_EFFECT_MIN_MS
+// §4.4: auto-effect in both bases; nextAutoEffect rerolled to AUTO_EFFECT_MIN_MS
 // by zeroRandom (bound 0 offset).
 static void test_auto_effect_starts_in_solid(void) {
     Mirror m(zeroRandom);
@@ -2280,8 +2280,197 @@ static void test_last_effect_set_when_a_deferred_effect_starts(void) {
     TEST_ASSERT_TRUE(EffectId::Comet == m.snapshot().lastEffect);
 }
 
+static uint32_t powerChoice = 0;
+static unsigned powerRandomDraws = 0;
+static uint32_t powerRandom(uint32_t bound) {
+    ++powerRandomDraws;
+    return bound == 2 ? powerChoice : 0;
+}
+
+static void test_random_power_on_selects_both_animations(void) {
+    for (powerChoice = 0; powerChoice <= 1; ++powerChoice) {
+        Mirror m(powerRandom);
+        uint32_t now = 0;
+        m.begin(now);
+        m.apply(lightState(1), now);
+        run(m, now, 50);  // second power frame
+        const uint16_t lit = litPixelCount(m.frame());
+        if (powerChoice == 0) TEST_ASSERT_EQUAL_UINT16(1, lit);
+        else TEST_ASSERT_TRUE_MESSAGE(lit >= 8, "segmented branch rendered the slider");
+        run(m, now, 2545 - now);
+        TEST_ASSERT_TRUE(PowerState::SlideOn == m.power());
+        run(m, now, 5);
+        TEST_ASSERT_TRUE(PowerState::On == m.power());
+        TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
+    }
+}
+
+static void test_random_power_off_selects_independently_of_power_on(void) {
+    for (uint32_t on = 0; on <= 1; ++on) {
+        powerChoice = on;
+        Mirror m(powerRandom);
+        uint32_t now = 0;
+        m.begin(now);
+        powerOnSettled(m, now);
+        powerChoice = 1 - on;
+        const uint32_t start = now;
+        m.apply(lightState(0), now);
+        run(m, now, 75);  // slider remains fully lit on its third frame
+        if (powerChoice == 0) TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), kMakeupColor));
+        else TEST_ASSERT_FALSE_MESSAGE(allPixelsEqual(m.frame(), kMakeupColor), "shutdown reused the slider");
+        run(m, now, start + 2570 - now);
+        TEST_ASSERT_TRUE(PowerState::SlideOff == m.power());
+        run(m, now, 5);
+        TEST_ASSERT_TRUE(PowerState::Off == m.power());
+        TEST_ASSERT_EQUAL_UINT16(0, litPixelCount(m.frame()));
+    }
+}
+
+static void test_segmented_immediate_off_stays_dark(void) {
+    powerChoice = 1;
+    Mirror m(powerRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    m.apply(lightState(1), now);
+    const unsigned draws = powerRandomDraws;
+    m.apply(lightState(0), now);
+    TEST_ASSERT_EQUAL_UINT32(draws, powerRandomDraws);
+    run(m, now, 25);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_EQUAL_UINT16(0, litPixelCount(m.frame()));
+}
+
+static void test_segmented_reversal_preserves_rgb_brightness_and_pattern(void) {
+    powerChoice = 1;
+    Mirror m(powerRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    Command custom = lightState(1);
+    custom.light.r = 90;
+    custom.light.g = 180;
+    custom.light.b = 240;
+    custom.light.brightness = 64;
+    m.apply(custom, now);
+    run(m, now, 1000);
+    const unsigned draws = powerRandomDraws;
+    powerChoice = 0;  // reversal must not draw a new animation type
+    m.apply(lightState(0), now);
+    run(m, now, 250);
+    const Frame before = m.frame();
+    m.apply(lightState(1), now);
+    TEST_ASSERT_EQUAL_UINT32(draws, powerRandomDraws);
+    run(m, now, 50);  // reverse cursor catches the previously rendered frame
+    for (uint16_t i = 0; i < Frame::kSize; ++i) TEST_ASSERT_TRUE(before[i] == m.frame()[i]);
+    run(m, now, kSlideMs);
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE(BaseMode::Solid == m.snapshot().base);
+    TEST_ASSERT_EQUAL_UINT8(64, m.snapshot().brightness);
+    TEST_ASSERT_TRUE(allPixelsEqual(m.frame(), scale(Rgbw{90, 180, 240, 0}, 64)));
+}
+
+static void test_segmented_pending_effect_and_wrap(void) {
+    powerChoice = 1;
+    Mirror m(powerRandom);
+    uint32_t now = UINT32_MAX - 1000;
+    m.begin(now);
+    Command on = lightState(1);
+    on.light.effect = EffectRequest::Temporary;
+    on.light.effectId = EffectId::Wave;
+    m.apply(on, now);
+    const uint32_t start = now;
+    for (uint32_t elapsed = 5; elapsed <= 2550; elapsed += 5) {
+        now = start + elapsed;
+        m.tick(now);
+        if (elapsed < 2550) TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    }
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+    TEST_ASSERT_TRUE(EffectId::Wave == m.snapshot().effect);
+    m.apply(lightState(0), now);
+    const uint32_t off = now;
+    for (uint32_t elapsed = 5; elapsed <= 2575; elapsed += 5) m.tick(off + elapsed);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    TEST_ASSERT_EQUAL_UINT16(0, litPixelCount(m.frame()));
+}
+
+// Occupancy must keep the light on without starving its independent effects.
+static void checkAutoEffectDuringActivity(int source, uint32_t start) {
+    Mirror m(zeroRandom);
+    uint32_t now = start;
+    m.begin(now);
+    m.apply(lightState(1), now);
+    for (uint32_t elapsed = 5; elapsed <= 60005; elapsed += 5) {
+        now = start + elapsed;
+        if (source == 0) m.onPir(true, now);
+        if (source == 1) m.onPir(elapsed % 30000 < 1000, now);
+        if (source == 2 && elapsed % 10000 == 0) m.apply(lightState(1), now);
+        m.tick(now);
+        if (elapsed <= 60000) TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    }
+    TEST_ASSERT_TRUE_MESSAGE(EffectId::Dark == m.snapshot().effect, "activity starved the automatic effect");
+    TEST_ASSERT_TRUE(PowerState::On == m.power());
+}
+
+static void test_auto_effect_survives_continuous_pir(void) { checkAutoEffectDuringActivity(0, 0); }
+static void test_auto_effect_survives_pulsed_pir(void) { checkAutoEffectDuringActivity(1, 0); }
+static void test_auto_effect_survives_repeated_on_commands(void) { checkAutoEffectDuringActivity(2, 0); }
+static void test_auto_effect_with_pir_across_wrap(void) { checkAutoEffectDuringActivity(0, UINT32_MAX - 30000); }
+
+static void test_auto_effect_pause_starts_at_effect_completion(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    run(m, now, 60005 - now);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+    while (m.snapshot().effect != EffectId::None) {
+        now += 5;
+        m.onPir(true, now);
+        m.tick(now);
+        TEST_ASSERT_TRUE(now < 80000);
+    }
+    const uint32_t ended = now;
+    while (now - ended < 60000) {
+        now += 5;
+        m.onPir(true, now);
+        m.tick(now);
+        TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    }
+    now += 5;
+    m.onPir(true, now);
+    m.tick(now);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+}
+
+static void test_auto_effect_clock_restarts_on_later_power_on(void) {
+    Mirror m(zeroRandom);
+    uint32_t now = 0;
+    m.begin(now);
+    powerOnSettled(m, now);
+    m.apply(lightState(0), now);
+    run(m, now, 120000);
+    TEST_ASSERT_TRUE(PowerState::Off == m.power());
+    const uint32_t start = now;
+    m.apply(lightState(1), now);
+    run(m, now, 60000);
+    TEST_ASSERT_TRUE(EffectId::None == m.snapshot().effect);
+    TEST_ASSERT_EQUAL_UINT32(start + 60000, now);
+    run(m, now, 5);
+    TEST_ASSERT_TRUE(EffectId::Dark == m.snapshot().effect);
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
+    RUN_TEST(test_random_power_on_selects_both_animations);
+    RUN_TEST(test_random_power_off_selects_independently_of_power_on);
+    RUN_TEST(test_segmented_immediate_off_stays_dark);
+    RUN_TEST(test_segmented_reversal_preserves_rgb_brightness_and_pattern);
+    RUN_TEST(test_segmented_pending_effect_and_wrap);
+    RUN_TEST(test_auto_effect_survives_continuous_pir);
+    RUN_TEST(test_auto_effect_survives_pulsed_pir);
+    RUN_TEST(test_auto_effect_survives_repeated_on_commands);
+    RUN_TEST(test_auto_effect_with_pir_across_wrap);
+    RUN_TEST(test_auto_effect_pause_starts_at_effect_completion);
+    RUN_TEST(test_auto_effect_clock_restarts_on_later_power_on);
     RUN_TEST(test_begins_off);
     RUN_TEST(test_click1_from_off_starts_slide_on);
     RUN_TEST(test_slide_on_completes_to_on);
